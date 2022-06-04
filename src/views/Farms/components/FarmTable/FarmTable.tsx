@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import { useRef } from 'react'
 import styled from 'styled-components'
 import { useTable, Button, ChevronUpIcon, ColumnType } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
@@ -13,15 +13,16 @@ export interface ITableProps {
 }
 
 const Container = styled.div`
-  filter: ${({ theme }) => theme.card.dropShadow};
   width: 100%;
   background: ${({ theme }) => theme.card.background};
   border-radius: 16px;
   margin: 16px 0px;
+  border: 1px solid ${({ theme }) => theme.colors.cardBorder};
 `
 
 const TableWrapper = styled.div`
   overflow: visible;
+  scroll-margin-top: 64px;
 
   &::-webkit-scrollbar {
     display: none;
@@ -71,8 +72,8 @@ const FarmTable: React.FC<ITableProps> = (props) => {
   }
 
   return (
-    <Container>
-      <TableContainer>
+    <Container id="farms-table">
+      <TableContainer id="table-container">
         <TableWrapper ref={tableWrapperEl}>
           <StyledTable>
             <TableBody>

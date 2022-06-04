@@ -1,13 +1,14 @@
-import React from 'react'
 import styled from 'styled-components'
-import { Card, CardHeader, CardBody, CommunityIcon, Heading, PrizeIcon, Text } from '@pancakeswap/uikit'
-import { Team } from 'config/constants/types'
+import { Card, CardHeader, CardBody, CommunityIcon, Heading, PrizeIcon, Text, Skeleton } from '@pancakeswap/uikit'
+import { FetchStatus } from 'config/constants/types'
+import useSWR from 'swr'
+import { getTeam } from 'state/teams/helpers'
 import { useTranslation } from 'contexts/Localization'
-import ComingSoon from 'views/Profile/components/ComingSoon'
-import StatBox from 'views/Profile/components/StatBox'
+import ComingSoon from './ComingSoon'
+import IconStatBox from './IconStatBox'
 
 interface TeamCardProps {
-  team: Team
+  id: string
 }
 
 const Wrapper = styled.div`
@@ -47,7 +48,6 @@ const StyledCardHeader = styled(CardHeader)<{ bg: string }>`
   background-repeat: no-repeat;
   background-position: center;
   background-size: cover;
-  border-radius: 32px 32px 0 0;
   padding-top: 0;
   text-align: center;
 `
@@ -73,8 +73,10 @@ const StatRow = styled.div`
   }
 `
 
-const TeamCard: React.FC<TeamCardProps> = ({ team }) => {
+const TeamCard: React.FC<TeamCardProps> = ({ id }) => {
   const { t } = useTranslation()
+  const idNumber = Number(id)
+  const { data: team, status } = useSWR(['team', id], async () => getTeam(idNumber))
 
   return (
     <Wrapper>
@@ -90,8 +92,12 @@ const TeamCard: React.FC<TeamCardProps> = ({ team }) => {
         </StyledCardHeader>
         <CardBody>
           <StatRow>
-            <StatBox icon={CommunityIcon} title={team.users} subtitle={t('Active Members')} />
-            <StatBox icon={PrizeIcon} title={t('Coming Soon')} subtitle={t('Team Points')} isDisabled />
+            {status !== FetchStatus.Fetched ? (
+              <Skeleton width="100px" />
+            ) : (
+              <IconStatBox icon={CommunityIcon} title={team.users} subtitle={t('Active Members')} />
+            )}
+            <IconStatBox icon={PrizeIcon} title={t('Coming Soon')} subtitle={t('Team Points')} isDisabled />
           </StatRow>
           <Heading as="h3">{t('Team Achievements')}</Heading>
           <ComingSoon />

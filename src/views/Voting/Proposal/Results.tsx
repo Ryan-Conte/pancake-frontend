@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Box,
   Text,
@@ -13,22 +12,22 @@ import {
   CheckmarkCircleIcon,
 } from '@pancakeswap/uikit'
 import { useWeb3React } from '@web3-react/core'
-import times from 'lodash/times'
-import { Vote, VotingStateLoadingStatus } from 'state/types'
-import { useGetVotingStateLoadingStatus } from 'state/hooks'
+import { Vote } from 'state/types'
+import { formatNumber } from 'utils/formatBalance'
 import { useTranslation } from 'contexts/Localization'
+import { FetchStatus } from 'config/constants/types'
 import { calculateVoteResults, getTotalFromVotes } from '../helpers'
 import TextEllipsis from '../components/TextEllipsis'
 
 interface ResultsProps {
   choices: string[]
   votes: Vote[]
+  votesLoadingStatus: FetchStatus
 }
 
-const Results: React.FC<ResultsProps> = ({ choices, votes }) => {
+const Results: React.FC<ResultsProps> = ({ choices, votes, votesLoadingStatus }) => {
   const { t } = useTranslation()
   const results = calculateVoteResults(votes)
-  const votingStatus = useGetVotingStateLoadingStatus()
   const { account } = useWeb3React()
   const totalVotes = getTotalFromVotes(votes)
 
@@ -40,12 +39,11 @@ const Results: React.FC<ResultsProps> = ({ choices, votes }) => {
         </Heading>
       </CardHeader>
       <CardBody>
-        {votingStatus === VotingStateLoadingStatus.IDLE &&
+        {votesLoadingStatus === FetchStatus.Fetched &&
           choices.map((choice, index) => {
             const choiceVotes = results[choice] || []
             const totalChoiceVote = getTotalFromVotes(choiceVotes)
-
-            const progress = totalVotes.eq(0) ? 0 : totalChoiceVote.div(totalVotes).times(100).toNumber()
+            const progress = totalVotes === 0 ? 0 : (totalChoiceVote / totalVotes) * 100
             const hasVoted = choiceVotes.some((vote) => {
               return account && vote.voter.toLowerCase() === account.toLowerCase()
             })
@@ -66,7 +64,7 @@ const Results: React.FC<ResultsProps> = ({ choices, votes }) => {
                   <Progress primaryStep={progress} scale="sm" />
                 </Box>
                 <Flex alignItems="center" justifyContent="space-between">
-                  <Text color="textSubtle">{t('%total% Votes', { total: totalChoiceVote.toFormat(3) })}</Text>
+                  <Text color="textSubtle">{t('%total% Votes', { total: formatNumber(totalChoiceVote, 0, 2) })}</Text>
                   <Text>
                     {progress.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
                   </Text>
@@ -75,11 +73,18 @@ const Results: React.FC<ResultsProps> = ({ choices, votes }) => {
             )
           })}
 
-        {votingStatus === VotingStateLoadingStatus.LOADING &&
-          times(choices.length).map((count, index) => {
+        {votesLoadingStatus === FetchStatus.Fetching &&
+          choices.map((choice, index) => {
             return (
-              <Box key={count} mt={index > 0 ? '24px' : '0px'}>
-                <Skeleton height="36px" mb="4px" />
+              <Box key={choice} mt={index > 0 ? '24px' : '0px'}>
+                <Flex alignItems="center" mb="8px">
+                  <TextEllipsis mb="4px" title={choice}>
+                    {choice}
+                  </TextEllipsis>
+                </Flex>
+                <Box mb="4px">
+                  <Skeleton height="36px" mb="4px" />
+                </Box>
               </Box>
             )
           })}

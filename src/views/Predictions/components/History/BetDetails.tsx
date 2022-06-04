@@ -1,4 +1,3 @@
-import React from 'react'
 import styled from 'styled-components'
 import { Bet } from 'state/types'
 import { useTranslation } from 'contexts/Localization'
@@ -31,7 +30,7 @@ const BetDetails: React.FC<BetDetailsProps> = ({ bet, result }) => {
       {result === Result.CANCELED && (
         <Text as="p" color="failure" mb="24px">
           {t(
-            'This round was automatically canceled due to an error. If you entered a position, please reclaim your funds below.',
+            'This round was automatically cancelled due to an error. If you entered a position, please reclaim your funds below.',
           )}
         </Text>
       )}
@@ -41,18 +40,22 @@ const BetDetails: React.FC<BetDetailsProps> = ({ bet, result }) => {
         <PayoutRow positionLabel={t('Up')} multiplier={bullMultiplier} amount={bullAmount} />
         <PayoutRow positionLabel={t('Down')} multiplier={bearMultiplier} amount={bearAmount} />
       </RoundResultHistory>
-      <Flex alignItems="center" justifyContent="space-between" mb="8px">
-        <Text>{t('Opening Block')}</Text>
-        <Link href={getBscScanLink(bet.round.lockBlock, 'block')} external>
-          {bet.round.lockBlock}
-        </Link>
-      </Flex>
-      <Flex alignItems="center" justifyContent="space-between">
-        <Text>{t('Closing Block')}</Text>
-        <Link href={getBscScanLink(bet.round.endBlock, 'block')} external>
-          {bet.round.endBlock}
-        </Link>
-      </Flex>
+      {bet.round.lockBlock && (
+        <Flex alignItems="center" justifyContent="space-between" mb="8px">
+          <Text>{t('Opening Block')}</Text>
+          <Link href={getBscScanLink(bet.round.lockBlock, 'block')} external>
+            {bet.round.lockBlock}
+          </Link>
+        </Flex>
+      )}
+      {bet.round.closeBlock && (
+        <Flex alignItems="center" justifyContent="space-between">
+          <Text>{t('Closing Block')}</Text>
+          <Link href={getBscScanLink(bet.round.closeBlock, 'block')} external>
+            {bet.round.closeBlock}
+          </Link>
+        </Flex>
+      )}
     </StyledBetDetails>
   )
 }

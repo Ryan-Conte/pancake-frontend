@@ -1,45 +1,72 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styled from 'styled-components'
+import { BigNumber as EthersBigNumber } from '@ethersproject/bignumber'
+import { formatUnits } from '@ethersproject/units'
 import BigNumber from 'bignumber.js'
 import { useWeb3React } from '@web3-react/core'
-import { Heading, Flex, Image, Text } from '@pancakeswap/uikit'
+import { Heading, Flex, Image, Text, Link } from '@pancakeswap/uikit'
 import orderBy from 'lodash/orderBy'
 import partition from 'lodash/partition'
 import { useTranslation } from 'contexts/Localization'
-import usePersistState from 'hooks/usePersistState'
-import { usePools, useFetchCakeVault, useFetchPublicPoolsData, usePollFarmsData, useCakeVault } from 'state/hooks'
+import useIntersectionObserver from 'hooks/useIntersectionObserver'
+import { usePoolsPageFetch, usePoolsWithVault } from 'state/pools/hooks'
 import { latinise } from 'utils/latinise'
 import FlexLayout from 'components/Layout/Flex'
 import Page from 'components/Layout/Page'
 import PageHeader from 'components/PageHeader'
 import SearchInput from 'components/SearchInput'
 import Select, { OptionProps } from 'components/Select/Select'
-import { Pool } from 'state/types'
+import { DeserializedPool, DeserializedPoolVault } from 'state/types'
+import { useUserPoolStakedOnly, useUserPoolsViewMode } from 'state/user/hooks'
+import { ViewMode } from 'state/user/actions'
+import { useRouter } from 'next/router'
+import Loading from 'components/Loading'
+import { useInitialBlock } from 'state/block/hooks'
+import { BSC_BLOCK_TIME } from 'config'
 import PoolCard from './components/PoolCard'
 import CakeVaultCard from './components/CakeVaultCard'
 import PoolTabButtons from './components/PoolTabButtons'
-import BountyCard from './components/BountyCard'
-import HelpButton from './components/HelpButton'
 import PoolsTable from './components/PoolsTable/PoolsTable'
-import { ViewMode } from './components/ToggleView/ToggleView'
-import { getAprData, getCakeVaultEarnings } from './helpers'
+import { getCakeVaultEarnings } from './helpers'
 
 const CardLayout = styled(FlexLayout)`
   justify-content: center;
 `
 
-const PoolControls = styled(Flex)`
+const PoolControls = styled.div`
+  display: flex;
+  width: 100%;
+  align-items: center;
+  position: relative;
+
+  justify-content: space-between;
   flex-direction: column;
-  margin-bottom: 24px;
-  ${({ theme }) => theme.mediaQueries.md} {
+  margin-bottom: 32px;
+
+  ${({ theme }) => theme.mediaQueries.sm} {
     flex-direction: row;
+    flex-wrap: wrap;
+    padding: 16px 32px;
+    margin-bottom: 0;
   }
 `
 
-const SearchSortContainer = styled(Flex)`
-  gap: 10px;
-  justify-content: space-between;
+const FilterContainer = styled.div`
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 0px;
+
+  ${({ theme }) => theme.mediaQueries.sm} {
+    width: auto;
+    padding: 0;
+  }
+`
+
+const LabelWrapper = styled.div`
+  > ${Text} {
+    font-size: 12px;
+  }
 `
 
 const ControlStretch = styled(Flex)`
@@ -48,153 +75,175 @@ const ControlStretch = styled(Flex)`
   }
 `
 
+const FinishedTextContainer = styled(Flex)`
+  padding-bottom: 32px;
+  flex-direction: column;
+  ${({ theme }) => theme.mediaQueries.md} {
+    flex-direction: row;
+  }
+`
+
+const FinishedTextLink = styled(Link)`
+  font-weight: 400;
+  white-space: nowrap;
+  text-decoration: underline;
+`
+
 const NUMBER_OF_POOLS_VISIBLE = 12
 
+const sortPools = (account: string, sortOption: string, pools: DeserializedPool[], poolsToSort: DeserializedPool[]) => {
+  switch (sortOption) {
+    case 'apr':
+      // Ternary is needed to prevent pools without APR (like MIX) getting top spot
+      return orderBy(poolsToSort, (pool: DeserializedPool) => (pool.apr ? pool.apr : 0), 'desc')
+    case 'earned':
+      return orderBy(
+        poolsToSort,
+        (pool: DeserializedPool) => {
+          if (!pool.userData || !pool.earningTokenPrice) {
+            return 0
+          }
+
+          if (pool.vaultKey) {
+            const vault = pool as DeserializedPoolVault
+            if (!vault.userData || !vault.userData.userShares) {
+              return 0
+            }
+            return getCakeVaultEarnings(
+              account,
+              vault.userData.cakeAtLastUserAction,
+              vault.userData.userShares,
+              vault.pricePerFullShare,
+              vault.earningTokenPrice,
+              vault.userData.currentOverdueFee.plus(vault.userData.currentPerformanceFee),
+            ).autoUsdToDisplay
+          }
+          return pool.userData.pendingReward.times(pool.earningTokenPrice).toNumber()
+        },
+        'desc',
+      )
+    case 'totalStaked': {
+      return orderBy(
+        poolsToSort,
+        (pool: DeserializedPool) => {
+          let totalStaked = Number.NaN
+          if (pool.vaultKey) {
+            const vault = pool as DeserializedPoolVault
+            if (pool.stakingTokenPrice && vault.totalCakeInVault.isFinite()) {
+              totalStaked =
+                +formatUnits(EthersBigNumber.from(vault.totalCakeInVault.toString()), pool.stakingToken.decimals) *
+                pool.stakingTokenPrice
+            }
+          } else if (pool.totalStaked?.isFinite() && pool.stakingTokenPrice) {
+            totalStaked =
+              +formatUnits(EthersBigNumber.from(pool.totalStaked.toString()), pool.stakingToken.decimals) *
+              pool.stakingTokenPrice
+          }
+          return Number.isFinite(totalStaked) ? totalStaked : 0
+        },
+        'desc',
+      )
+    }
+    case 'latest':
+      return orderBy(poolsToSort, (pool: DeserializedPool) => Number(pool.sousId), 'desc')
+    default:
+      return poolsToSort
+  }
+}
+
+const POOL_START_BLOCK_THRESHOLD = (60 / BSC_BLOCK_TIME) * 4
+
 const Pools: React.FC = () => {
-  const location = useLocation()
+  const router = useRouter()
   const { t } = useTranslation()
   const { account } = useWeb3React()
-  const { pools: poolsWithoutAutoVault, userDataLoaded } = usePools(account)
-  const [stakedOnly, setStakedOnly] = usePersistState(false, { localStorageKey: 'pancake_pool_staked' })
+  const { pools, userDataLoaded } = usePoolsWithVault()
+  const [stakedOnly, setStakedOnly] = useUserPoolStakedOnly()
+  const [viewMode, setViewMode] = useUserPoolsViewMode()
   const [numberOfPoolsVisible, setNumberOfPoolsVisible] = useState(NUMBER_OF_POOLS_VISIBLE)
-  const [observerIsSet, setObserverIsSet] = useState(false)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
-  const [viewMode, setViewMode] = usePersistState(ViewMode.TABLE, { localStorageKey: 'pancake_farm_view' })
+  const { observerRef, isIntersecting } = useIntersectionObserver()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortOption, setSortOption] = useState('hot')
-  const {
-    userData: { cakeAtLastUserAction, userShares },
-    fees: { performanceFee },
-    pricePerFullShare,
-    totalCakeInVault,
-  } = useCakeVault()
-  const accountHasVaultShares = userShares && userShares.gt(0)
-  const performanceFeeAsDecimal = performanceFee && performanceFee / 100
+  const chosenPoolsLength = useRef(0)
+  const initialBlock = useInitialBlock()
 
-  const pools = useMemo(() => {
-    const cakePool = poolsWithoutAutoVault.find((pool) => pool.sousId === 0)
-    const cakeAutoVault = { ...cakePool, isAutoVault: true }
-    return [cakeAutoVault, ...poolsWithoutAutoVault]
-  }, [poolsWithoutAutoVault])
-
-  // TODO aren't arrays in dep array checked just by reference, i.e. it will rerender every time reference changes?
   const [finishedPools, openPools] = useMemo(() => partition(pools, (pool) => pool.isFinished), [pools])
+  const openPoolsWithStartBlockFilter = useMemo(
+    () =>
+      openPools.filter((pool) =>
+        initialBlock > 0 && pool.startBlock
+          ? Number(pool.startBlock) < initialBlock + POOL_START_BLOCK_THRESHOLD
+          : true,
+      ),
+    [initialBlock, openPools],
+  )
   const stakedOnlyFinishedPools = useMemo(
     () =>
       finishedPools.filter((pool) => {
-        if (pool.isAutoVault) {
-          return accountHasVaultShares
+        if (pool.vaultKey) {
+          const vault = pool as DeserializedPoolVault
+          return vault.userData.userShares && vault.userData.userShares.gt(0)
         }
         return pool.userData && new BigNumber(pool.userData.stakedBalance).isGreaterThan(0)
       }),
-    [finishedPools, accountHasVaultShares],
+    [finishedPools],
   )
-  const stakedOnlyOpenPools = useMemo(
-    () =>
-      openPools.filter((pool) => {
-        if (pool.isAutoVault) {
-          return accountHasVaultShares
-        }
-        return pool.userData && new BigNumber(pool.userData.stakedBalance).isGreaterThan(0)
-      }),
-    [openPools, accountHasVaultShares],
-  )
+  const stakedOnlyOpenPools = useCallback(() => {
+    return openPoolsWithStartBlockFilter.filter((pool) => {
+      if (pool.vaultKey) {
+        const vault = pool as DeserializedPoolVault
+        return vault.userData.userShares && vault.userData.userShares.gt(0)
+      }
+      return pool.userData && new BigNumber(pool.userData.stakedBalance).isGreaterThan(0)
+    })
+  }, [openPoolsWithStartBlockFilter])
   const hasStakeInFinishedPools = stakedOnlyFinishedPools.length > 0
 
-  usePollFarmsData()
-  useFetchCakeVault()
-  useFetchPublicPoolsData()
+  usePoolsPageFetch()
 
   useEffect(() => {
-    const showMorePools = (entries) => {
-      const [entry] = entries
-      if (entry.isIntersecting) {
-        setNumberOfPoolsVisible((poolsCurrentlyVisible) => poolsCurrentlyVisible + NUMBER_OF_POOLS_VISIBLE)
-      }
-    }
-
-    if (!observerIsSet) {
-      const loadMoreObserver = new IntersectionObserver(showMorePools, {
-        rootMargin: '0px',
-        threshold: 1,
+    if (isIntersecting) {
+      setNumberOfPoolsVisible((poolsCurrentlyVisible) => {
+        if (poolsCurrentlyVisible <= chosenPoolsLength.current) {
+          return poolsCurrentlyVisible + NUMBER_OF_POOLS_VISIBLE
+        }
+        return poolsCurrentlyVisible
       })
-      loadMoreObserver.observe(loadMoreRef.current)
-      setObserverIsSet(true)
     }
-  }, [observerIsSet])
+  }, [isIntersecting])
 
-  const showFinishedPools = location.pathname.includes('history')
+  const showFinishedPools = router.pathname.includes('history')
 
-  const handleChangeSearchQuery = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(event.target.value)
+  const handleChangeSearchQuery = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(event.target.value),
+    [],
+  )
+
+  const handleSortOptionChange = useCallback((option: OptionProps) => setSortOption(option.value), [])
+
+  let chosenPools
+  if (showFinishedPools) {
+    chosenPools = stakedOnly ? stakedOnlyFinishedPools : finishedPools
+  } else {
+    chosenPools = stakedOnly ? stakedOnlyOpenPools() : openPoolsWithStartBlockFilter
   }
 
-  const handleSortOptionChange = (option: OptionProps): void => {
-    setSortOption(option.value)
-  }
-
-  const sortPools = (poolsToSort: Pool[]) => {
-    switch (sortOption) {
-      case 'apr':
-        // Ternary is needed to prevent pools without APR (like MIX) getting top spot
-        return orderBy(
-          poolsToSort,
-          (pool: Pool) => (pool.apr ? getAprData(pool, performanceFeeAsDecimal).apr : 0),
-          'desc',
-        )
-      case 'earned':
-        return orderBy(
-          poolsToSort,
-          (pool: Pool) => {
-            if (!pool.userData || !pool.earningTokenPrice) {
-              return 0
-            }
-            return pool.isAutoVault
-              ? getCakeVaultEarnings(
-                  account,
-                  cakeAtLastUserAction,
-                  userShares,
-                  pricePerFullShare,
-                  pool.earningTokenPrice,
-                ).autoUsdToDisplay
-              : pool.userData.pendingReward.times(pool.earningTokenPrice).toNumber()
-          },
-          'desc',
-        )
-      case 'totalStaked':
-        return orderBy(
-          poolsToSort,
-          (pool: Pool) => (pool.isAutoVault ? totalCakeInVault.toNumber() : pool.totalStaked.toNumber()),
-          'desc',
-        )
-      default:
-        return poolsToSort
-    }
-  }
-
-  const poolsToShow = () => {
-    let chosenPools = []
-    if (showFinishedPools) {
-      chosenPools = stakedOnly ? stakedOnlyFinishedPools : finishedPools
-    } else {
-      chosenPools = stakedOnly ? stakedOnlyOpenPools : openPools
-    }
+  chosenPools = useMemo(() => {
+    const sortedPools = sortPools(account, sortOption, pools, chosenPools).slice(0, numberOfPoolsVisible)
 
     if (searchQuery) {
       const lowercaseQuery = latinise(searchQuery.toLowerCase())
-      chosenPools = chosenPools.filter((pool) =>
-        latinise(pool.earningToken.symbol.toLowerCase()).includes(lowercaseQuery),
-      )
+      return sortedPools.filter((pool) => latinise(pool.earningToken.symbol.toLowerCase()).includes(lowercaseQuery))
     }
-
-    return sortPools(chosenPools).slice(0, numberOfPoolsVisible)
-  }
+    return sortedPools
+  }, [account, sortOption, pools, chosenPools, numberOfPoolsVisible, searchQuery])
+  chosenPoolsLength.current = chosenPools.length
 
   const cardLayout = (
     <CardLayout>
-      {poolsToShow().map((pool) =>
-        pool.isAutoVault ? (
-          <CakeVaultCard key="auto-cake" pool={pool} showStakedOnly={stakedOnly} />
+      {chosenPools.map((pool) =>
+        pool.vaultKey ? (
+          <CakeVaultCard key={pool.vaultKey} pool={pool} showStakedOnly={stakedOnly} />
         ) : (
           <PoolCard key={pool.sousId} pool={pool} account={account} />
         ),
@@ -202,7 +251,7 @@ const Pools: React.FC = () => {
     </CardLayout>
   )
 
-  const tableLayout = <PoolsTable pools={poolsToShow()} account={account} userDataLoaded={userDataLoaded} />
+  const tableLayout = <PoolsTable pools={chosenPools} account={account} />
 
   return (
     <>
@@ -219,14 +268,10 @@ const Pools: React.FC = () => {
               {t('High APR, low risk.')}
             </Heading>
           </Flex>
-          <Flex flex="1" height="fit-content" justifyContent="center" alignItems="center" mt={['24px', null, '0']}>
-            <HelpButton />
-            <BountyCard />
-          </Flex>
         </Flex>
       </PageHeader>
       <Page>
-        <PoolControls justifyContent="space-between">
+        <PoolControls>
           <PoolTabButtons
             stakedOnly={stakedOnly}
             setStakedOnly={setStakedOnly}
@@ -234,8 +279,8 @@ const Pools: React.FC = () => {
             viewMode={viewMode}
             setViewMode={setViewMode}
           />
-          <SearchSortContainer>
-            <Flex flexDirection="column" width="50%">
+          <FilterContainer>
+            <LabelWrapper>
               <Text fontSize="12px" bold color="textSubtle" textTransform="uppercase">
                 {t('Sort by')}
               </Text>
@@ -258,28 +303,40 @@ const Pools: React.FC = () => {
                       label: t('Total staked'),
                       value: 'totalStaked',
                     },
+                    {
+                      label: t('Latest'),
+                      value: 'latest',
+                    },
                   ]}
-                  onChange={handleSortOptionChange}
+                  onOptionChange={handleSortOptionChange}
                 />
               </ControlStretch>
-            </Flex>
-            <Flex flexDirection="column" width="50%">
+            </LabelWrapper>
+            <LabelWrapper style={{ marginLeft: 16 }}>
               <Text fontSize="12px" bold color="textSubtle" textTransform="uppercase">
                 {t('Search')}
               </Text>
-              <ControlStretch>
-                <SearchInput onChange={handleChangeSearchQuery} placeholder="Search Pools" />
-              </ControlStretch>
-            </Flex>
-          </SearchSortContainer>
+              <SearchInput onChange={handleChangeSearchQuery} placeholder="Search Pools" />
+            </LabelWrapper>
+          </FilterContainer>
         </PoolControls>
         {showFinishedPools && (
-          <Text fontSize="20px" color="failure" pb="32px">
-            {t('These pools are no longer distributing rewards. Please unstake your tokens.')}
-          </Text>
+          <FinishedTextContainer>
+            <Text fontSize={['16px', null, '20px']} color="failure" pr="4px">
+              {t('Looking for v1 CAKE syrup pools?')}
+            </Text>
+            <FinishedTextLink href="/migration" fontSize={['16px', null, '20px']} color="failure">
+              {t('Go to migration page')}.
+            </FinishedTextLink>
+          </FinishedTextContainer>
+        )}
+        {account && !userDataLoaded && stakedOnly && (
+          <Flex justifyContent="center" mb="4px">
+            <Loading />
+          </Flex>
         )}
         {viewMode === ViewMode.CARD ? cardLayout : tableLayout}
-        <div ref={loadMoreRef} />
+        <div ref={observerRef} />
         <Image
           mx="auto"
           mt="12px"

@@ -7,7 +7,7 @@ const useUnstakeFarms = (pid: number) => {
 
   const handleUnstake = useCallback(
     async (amount: string) => {
-      await unstakeFarm(masterChefContract, pid, amount)
+      return unstakeFarm(masterChefContract, pid, amount)
     },
     [masterChefContract, pid],
   )

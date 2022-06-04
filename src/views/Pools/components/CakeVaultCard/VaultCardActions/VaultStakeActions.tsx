@@ -1,39 +1,52 @@
-import React from 'react'
-import { Flex, Button, useModal, Skeleton } from '@pancakeswap/uikit'
+import { Flex, Skeleton, useModal } from '@pancakeswap/uikit'
 import BigNumber from 'bignumber.js'
-import { useTranslation } from 'contexts/Localization'
-import { Pool } from 'state/types'
+import { DeserializedPool } from 'state/types'
 import NotEnoughTokensModal from '../../PoolCard/Modals/NotEnoughTokensModal'
+import { VaultStakeButtonGroup } from '../../Vault/VaultStakeButtonGroup'
 import VaultStakeModal from '../VaultStakeModal'
+import LockedStakeModal from '../../LockedPool/Modals/LockedStakeModal'
 import HasSharesActions from './HasSharesActions'
 
 interface VaultStakeActionsProps {
-  pool: Pool
+  pool: DeserializedPool
   stakingTokenBalance: BigNumber
   accountHasSharesStaked: boolean
-  isLoading?: boolean
+  performanceFee: number
 }
 
 const VaultStakeActions: React.FC<VaultStakeActionsProps> = ({
   pool,
   stakingTokenBalance,
   accountHasSharesStaked,
-  isLoading = false,
+  performanceFee,
 }) => {
-  const { stakingToken } = pool
-  const { t } = useTranslation()
+  const { stakingToken, userDataLoaded } = pool
   const [onPresentTokenRequired] = useModal(<NotEnoughTokensModal tokenSymbol={stakingToken.symbol} />)
-  const [onPresentStake] = useModal(<VaultStakeModal stakingMax={stakingTokenBalance} pool={pool} />)
+  const [onPresentStake] = useModal(
+    <VaultStakeModal stakingMax={stakingTokenBalance} pool={pool} performanceFee={performanceFee} />,
+  )
+  const [openPresentLockedStakeModal] = useModal(
+    <LockedStakeModal
+      currentBalance={stakingTokenBalance}
+      stakingToken={stakingToken}
+      stakingTokenBalance={stakingTokenBalance}
+    />,
+  )
 
   const renderStakeAction = () => {
     return accountHasSharesStaked ? (
-      <HasSharesActions pool={pool} stakingTokenBalance={stakingTokenBalance} />
+      <HasSharesActions pool={pool} stakingTokenBalance={stakingTokenBalance} performanceFee={performanceFee} />
     ) : (
-      <Button onClick={stakingTokenBalance.gt(0) ? onPresentStake : onPresentTokenRequired}>{t('Stake')}</Button>
+      <VaultStakeButtonGroup
+        onFlexibleClick={stakingTokenBalance.gt(0) ? onPresentStake : onPresentTokenRequired}
+        onLockedClick={openPresentLockedStakeModal}
+      />
     )
   }
 
-  return <Flex flexDirection="column">{isLoading ? <Skeleton width="100%" height="52px" /> : renderStakeAction()}</Flex>
+  return (
+    <Flex flexDirection="column">{userDataLoaded ? renderStakeAction() : <Skeleton width="100%" height="52px" />}</Flex>
+  )
 }
 
 export default VaultStakeActions

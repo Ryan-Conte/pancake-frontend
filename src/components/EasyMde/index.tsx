@@ -1,4 +1,4 @@
-import React, { TextareaHTMLAttributes, useEffect, useRef } from 'react'
+import { TextareaHTMLAttributes, useEffect, useRef } from 'react'
 import EasyMde from 'easymde'
 import styled from 'styled-components'
 import merge from 'lodash/merge'
@@ -22,6 +22,10 @@ const Wrapper = styled.div`
 
   .CodeMirror-code {
     color: ${({ theme }) => theme.colors.text};
+  }
+
+  .CodeMirror-cursor {
+    border-left: ${({ theme }) => `1px solid ${theme.colors.text}`};
   }
 
   .editor-toolbar {

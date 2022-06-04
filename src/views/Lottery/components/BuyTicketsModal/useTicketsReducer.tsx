@@ -1,6 +1,6 @@
 import { LotteryTicket } from 'config/constants/types'
 import { useEffect, useReducer } from 'react'
-import { parseRetreivedNumber } from '../../helpers'
+import { parseRetrievedNumber } from '../../helpers'
 import generateTicketNumbers from './generateTicketNumbers'
 
 export interface Ticket {
@@ -23,7 +23,7 @@ const getInitialState = ({
   userCurrentTickets: LotteryTicket[]
 }): TicketsState => {
   const randomTickets = generateTicketNumbers(amount, userCurrentTickets)
-  const randomTicketsAsStringArray = randomTickets.map((ticket) => parseRetreivedNumber(ticket.toString()).split(''))
+  const randomTicketsAsStringArray = randomTickets.map((ticket) => parseRetrievedNumber(ticket.toString()).split(''))
   const tickets = Array.from({ length: amount }, (_, i) => i + 1).map((index) => ({
     id: index,
     numbers: randomTicketsAsStringArray[index - 1],
@@ -53,8 +53,8 @@ const reducer = (state: TicketsState, action: any) => {
       prevDuplicates.forEach((prevTicketId) => {
         if (!newDuplicates.map(({ id }) => id).includes(prevTicketId)) {
           const dupsToUpdate = [...tickets[prevTicketId - 1].duplicateWith]
-          const indexToRemvoe = dupsToUpdate.findIndex((id) => id === ticketId)
-          dupsToUpdate.splice(indexToRemvoe, 1)
+          const indexToRemove = dupsToUpdate.findIndex((id) => id === ticketId)
+          dupsToUpdate.splice(indexToRemove, 1)
           tickets[prevTicketId - 1] = {
             ...tickets[prevTicketId - 1],
             duplicateWith: dupsToUpdate,

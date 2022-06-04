@@ -3,6 +3,11 @@ import { GRAPH_API_LOTTERY } from 'config/constants/endpoints'
 import { LotteryRoundGraphEntity, LotteryResponse } from 'state/types'
 import { getRoundIdsArray, fetchMultipleLotteries } from './helpers'
 
+export const MAX_LOTTERIES_REQUEST_SIZE = 100
+
+/* eslint-disable camelcase */
+type LotteriesWhere = { id_in?: string[] }
+
 const applyNodeDataToLotteriesGraphResponse = (
   nodeData: LotteryResponse[],
   graphResponse: LotteryRoundGraphEntity[],
@@ -24,39 +29,44 @@ const applyNodeDataToLotteriesGraphResponse = (
     })
   }
 
-  //   Else if there is a graph response - merge with node data where node data is more reliable
-  const mergedResponse = graphResponse.map((graphRound, index) => {
-    const nodeRound = nodeData[index]
-    // if there is node data for this index, overwrite graph data. Otherwise - return graph data.
-    if (nodeRound) {
-      // if isLoading === true, there has been a node error - return graphRound
-      if (!nodeRound.isLoading) {
-        return {
-          endTime: nodeRound.endTime,
-          finalNumber: nodeRound.finalNumber.toString(),
-          startTime: nodeRound.startTime,
-          status: nodeRound.status,
-          id: graphRound.id,
-          ticketPrice: graphRound.ticketPrice,
-          totalTickets: graphRound.totalTickets,
-          totalUsers: graphRound.totalUsers,
-          winningTickets: graphRound.winningTickets,
-        }
-      }
-      return graphRound
+  // Populate all nodeRound data with supplementary graphResponse round data when available
+  const nodeRoundsWithGraphData = nodeData.map((nodeRoundData) => {
+    const graphRoundData = graphResponse.find((graphResponseRound) => graphResponseRound.id === nodeRoundData.lotteryId)
+    return {
+      endTime: nodeRoundData.endTime,
+      finalNumber: nodeRoundData.finalNumber.toString(),
+      startTime: nodeRoundData.startTime,
+      status: nodeRoundData.status,
+      id: nodeRoundData.lotteryId,
+      ticketPrice: graphRoundData?.ticketPrice,
+      totalTickets: graphRoundData?.totalTickets,
+      totalUsers: graphRoundData?.totalUsers,
+      winningTickets: graphRoundData?.winningTickets,
     }
-    return graphRound
   })
+
+  // Return the rounds with combined node + subgraph data, plus all remaining subgraph rounds.
+  const [lastCombinedDataRound] = nodeRoundsWithGraphData.slice(-1)
+  const lastCombinedDataRoundIndex = graphResponse
+    .map((graphRound) => graphRound?.id)
+    .indexOf(lastCombinedDataRound?.id)
+
+  const remainingSubgraphRounds = graphResponse ? graphResponse.splice(lastCombinedDataRoundIndex + 1) : []
+  const mergedResponse = [...nodeRoundsWithGraphData, ...remainingSubgraphRounds]
   return mergedResponse
 }
 
-const getGraphLotteries = async (): Promise<LotteryRoundGraphEntity[]> => {
+export const getGraphLotteries = async (
+  first = MAX_LOTTERIES_REQUEST_SIZE,
+  skip = 0,
+  where: LotteriesWhere = {},
+): Promise<LotteryRoundGraphEntity[]> => {
   try {
     const response = await request(
       GRAPH_API_LOTTERY,
       gql`
-        query getLotteries {
-          lotteries(first: 100, orderDirection: desc, orderBy: block) {
+        query getLotteries($first: Int!, $skip: Int!, $where: Lottery_filter) {
+          lotteries(first: $first, skip: $skip, where: $where, orderDirection: desc, orderBy: block) {
             id
             totalUsers
             totalTickets
@@ -69,6 +79,7 @@ const getGraphLotteries = async (): Promise<LotteryRoundGraphEntity[]> => {
           }
         }
       `,
+      { skip, first, where },
     )
     return response.lotteries
   } catch (error) {
@@ -79,8 +90,7 @@ const getGraphLotteries = async (): Promise<LotteryRoundGraphEntity[]> => {
 
 const getLotteriesData = async (currentLotteryId: string): Promise<LotteryRoundGraphEntity[]> => {
   const idsForNodesCall = getRoundIdsArray(currentLotteryId)
-  const nodeData = await fetchMultipleLotteries(idsForNodesCall)
-  const graphResponse = await getGraphLotteries()
+  const [nodeData, graphResponse] = await Promise.all([fetchMultipleLotteries(idsForNodesCall), getGraphLotteries()])
   const mergedData = applyNodeDataToLotteriesGraphResponse(nodeData, graphResponse)
   return mergedData
 }

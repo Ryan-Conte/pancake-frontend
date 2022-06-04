@@ -1,11 +1,8 @@
-import React, { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Modal, Flex, Button, Text, Skeleton, Box } from '@pancakeswap/uikit'
+import { StaticImageData } from 'next/dist/client/image'
 import styled from 'styled-components'
 import { useTranslation } from 'contexts/Localization'
-import FlippersShare from '../pngs/flippers-share.png'
-import StormShare from '../pngs/storm-share.png'
-import CakersShare from '../pngs/cakers-share.png'
-import ProfileMask from '../pngs/share-profile-mask.png'
 import MedalGold from '../pngs/medals/medal-gold.png'
 import MedalSilver from '../pngs/medals/medal-silver.png'
 import MedalBronze from '../pngs/medals/medal-bronze.png'
@@ -33,12 +30,25 @@ const MobileText = styled(Text)`
   }
 `
 
-const ShareImageModal: React.FC<YourScoreProps> = ({ onDismiss, profile, userLeaderboardInformation }) => {
+interface ShareImageModalProps extends YourScoreProps {
+  flippersShareImage: StaticImageData
+  stormShareImage: StaticImageData
+  cakersShareImage: StaticImageData
+}
+
+const ShareImageModal: React.FC<ShareImageModalProps> = ({
+  onDismiss,
+  profile,
+  userLeaderboardInformation,
+  flippersShareImage,
+  stormShareImage,
+  cakersShareImage,
+}) => {
   const { t } = useTranslation()
   const { global, team, volume } = userLeaderboardInformation
   const [bgImage, setBgImage] = useState(null)
   const [profileImage, setProfileImage] = useState(null)
-  const [profileOverlayImage, setProfileOverlayImage] = useState(null)
+  // const [profileOverlayImage, setProfileOverlayImage] = useState(null)
   const [medalImage, setMedalImage] = useState(null)
 
   const [imageFromCanvas, setImageFromCanvas] = useState(null)
@@ -61,35 +71,39 @@ const ShareImageModal: React.FC<YourScoreProps> = ({ onDismiss, profile, userLea
   }
 
   useEffect(() => {
-    const bgImages = [StormShare, FlippersShare, CakersShare]
-    const bgImagEl = new Image()
-    bgImagEl.src = bgImages[profile.teamId - 1]
-    bgImagEl.onload = () => setBgImage(bgImagEl)
+    if (profile) {
+      const bgImages = [stormShareImage.src, flippersShareImage.src, cakersShareImage.src]
+      const bgImagEl = new Image()
+      bgImagEl.src = bgImages[profile.teamId - 1]
+      bgImagEl.onload = () => setBgImage(bgImagEl)
 
-    const profileImageEl = new Image()
-    profileImageEl.src = `/images/nfts/${profile.nft?.images?.lg}`
-    profileImageEl.onload = () => setProfileImage(profileImageEl)
+      const profileImageEl = new Image()
+      profileImageEl.src = `${profile.nft?.image?.thumbnail}?d=${new Date().getTime()}`
+      profileImageEl.crossOrigin = 'Anonymous'
+      profileImageEl.onload = () => setProfileImage(profileImageEl)
 
-    const profileImageOverlayEl = new Image()
-    profileImageOverlayEl.src = ProfileMask
-    profileImageOverlayEl.onload = () => setProfileOverlayImage(profileImageOverlayEl)
+      // const profileImageOverlayEl = new Image()
+      // profileImageOverlayEl.src = ProfileMask.src
+      // profileImageOverlayEl.onload = () => setProfileOverlayImage(profileImageOverlayEl)
 
-    const medalImageEl = new Image()
-    medalImageEl.src = getMedal(team)
-    medalImageEl.onload = () => setMedalImage(medalImageEl)
-  }, [profile, team])
+      const medalImageEl = new Image()
+      medalImageEl.src = getMedal(team).src
+      medalImageEl.onload = () => setMedalImage(medalImageEl)
+    }
+  }, [profile, team, stormShareImage, flippersShareImage, cakersShareImage])
 
   useEffect(() => {
-    if (canvas && bgImage && profileImage && profileOverlayImage && medalImage) {
-      const canvasWidth = canvas.current.width
-      canvas.current.height = canvasWidth * 0.5625
-      const canvasHeight = canvas.current.height
+    const canvasEl = canvas.current
+    if (profile && canvasEl && bgImage && profileImage && medalImage) {
+      const canvasWidth = canvasEl.width
+      canvasEl.height = canvasWidth * 0.5625
+      const canvasHeight = canvasEl.height
 
-      const ctx = canvas.current.getContext('2d')
+      const ctx = canvasEl.getContext('2d')
 
       ctx.drawImage(bgImage, 0, 0, canvasWidth, canvasHeight)
       ctx.drawImage(profileImage, canvasWidth * 0.0315, canvasHeight * 0.07, canvasWidth * 0.19, canvasWidth * 0.19)
-      ctx.drawImage(profileOverlayImage, 0, 0, canvasWidth * 0.235, canvasWidth * 0.235)
+      // ctx.drawImage(profileOverlayImage, 0, 0, canvasWidth * 0.235, canvasWidth * 0.235)
       ctx.drawImage(medalImage, canvasWidth * 0.15, canvasHeight * 0.32, canvasWidth * 0.06, canvasWidth * 0.06)
 
       ctx.font = 'bold 84px Kanit'
@@ -101,13 +115,13 @@ const ShareImageModal: React.FC<YourScoreProps> = ({ onDismiss, profile, userLea
       ctx.fillText(`# ${global.toLocaleString()}`, canvasWidth * 0.18, canvasHeight * 0.79)
       ctx.fillText(`$ ${localiseTradingVolume(volume)}`, canvasWidth * 0.18, canvasHeight * 0.89)
 
-      setImageFromCanvas(canvas.current.toDataURL('image/png'))
+      setImageFromCanvas(canvasEl.toDataURL('image/png'))
     }
-  }, [canvas, bgImage, profileImage, team, global, volume, profile, profileOverlayImage, medalImage])
+  }, [bgImage, profileImage, team, global, volume, profile, medalImage])
 
   const downloadImage = () => {
     const link = document.createElement('a')
-    link.download = `easter-battle-${profile.username}.png`
+    link.download = `battle-${profile.username}.png`
     link.href = imageFromCanvas
     link.click()
   }

@@ -1,24 +1,28 @@
-import BigNumber from 'bignumber.js'
-import { getCakeAddress } from 'utils/addressHelpers'
-import { SNAPSHOT_HUB_API, SNAPSHOT_VOTING_API } from 'config/constants/endpoints'
-import { BIG_ZERO } from 'utils/bigNumber'
+import { SNAPSHOT_HUB_API } from 'config/constants/endpoints'
+import tokens from 'config/constants/tokens'
 import { Proposal, ProposalState, ProposalType, Vote } from 'state/types'
-import { simpleRpcProvider } from 'utils/providers'
-import { ADMIN_ADDRESS, PANCAKE_SPACE, SNAPSHOT_VERSION } from './config'
+import _chunk from 'lodash/chunk'
+import { ADMINS, PANCAKE_SPACE, SNAPSHOT_VERSION } from './config'
+import { getScores } from './getScores'
+import * as strategies from './strategies'
 
 export const isCoreProposal = (proposal: Proposal) => {
-  return proposal.author.toLowerCase() === ADMIN_ADDRESS.toLowerCase()
+  return ADMINS.includes(proposal.author.toLowerCase())
 }
 
 export const filterProposalsByType = (proposals: Proposal[], proposalType: ProposalType) => {
-  switch (proposalType) {
-    case ProposalType.COMMUNITY:
-      return proposals.filter((proposal) => !isCoreProposal(proposal))
-    case ProposalType.CORE:
-      return proposals.filter((proposal) => isCoreProposal(proposal))
-    case ProposalType.ALL:
-    default:
-      return proposals
+  if (proposals) {
+    switch (proposalType) {
+      case ProposalType.COMMUNITY:
+        return proposals.filter((proposal) => !isCoreProposal(proposal))
+      case ProposalType.CORE:
+        return proposals.filter((proposal) => isCoreProposal(proposal))
+      case ProposalType.ALL:
+      default:
+        return proposals
+    }
+  } else {
+    return []
   }
 }
 
@@ -32,6 +36,9 @@ export interface Message {
   sig: string
 }
 
+const STRATEGIES = [{ name: 'cake', params: { symbol: 'CAKE', address: tokens.cake.address, decimals: 18, max: 300 } }]
+const NETWORK = '56'
+
 /**
  * Generates metadata required by snapshot to validate payload
  */
@@ -39,7 +46,7 @@ export const generateMetaData = () => {
   return {
     plugins: {},
     network: 56,
-    strategies: [{ name: 'cake', params: { symbol: 'CAKE', address: getCakeAddress(), decimals: 18 } }],
+    strategies: STRATEGIES,
   }
 }
 
@@ -57,7 +64,7 @@ export const generatePayloadData = () => {
 /**
  * General function to send commands to the snapshot api
  */
-export const sendSnaphotData = async (message: Message) => {
+export const sendSnapshotData = async (message: Message) => {
   const response = await fetch(SNAPSHOT_HUB_API, {
     method: 'post',
     headers: {
@@ -76,37 +83,124 @@ export const sendSnaphotData = async (message: Message) => {
   return data
 }
 
-export const getVotingPower = async (account: string, poolAddresses: string[], block?: number) => {
-  const blockNumber = block || (await simpleRpcProvider.getBlockNumber())
-  const response = await fetch(`${SNAPSHOT_VOTING_API}/power`, {
-    method: 'post',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      address: account,
-      block: blockNumber,
-      poolAddresses,
-    }),
-  })
-  const data = await response.json()
-  return data.data
+export const VOTING_POWER_BLOCK = {
+  v0: 16300686,
+  v1: 17137653,
+}
+
+/**
+ *  Get voting power by single user for each category
+ */
+export const getVotingPower = async (account: string, poolAddresses: string[], blockNumber?: number) => {
+  if (blockNumber && blockNumber >= VOTING_POWER_BLOCK.v1) {
+    const [cakeBalance, cakeBnbLpBalance, cakePoolBalance, poolsBalance, total] = await getScores(
+      PANCAKE_SPACE,
+      [
+        strategies.cakeBalanceStrategy('v1'),
+        strategies.cakeBnbLpBalanceStrategy('v1'),
+        strategies.cakePoolBalanceStrategy('v1'),
+        strategies.creatPoolsBalanceStrategy(poolAddresses, 'v1'),
+        strategies.createTotalStrategy(poolAddresses, 'v1'),
+      ],
+      NETWORK,
+      [account],
+      blockNumber,
+    )
+
+    return {
+      poolsBalance: poolsBalance[account] ? poolsBalance[account] : 0,
+      total: total[account] ? total[account] : 0,
+      cakeBalance: cakeBalance[account] ? cakeBalance[account] : 0,
+      cakePoolBalance: cakePoolBalance[account] ? cakePoolBalance[account] : 0,
+      cakeBnbLpBalance: cakeBnbLpBalance[account] ? cakeBnbLpBalance[account] : 0,
+      voter: account,
+    }
+  }
+
+  if (blockNumber && blockNumber >= VOTING_POWER_BLOCK.v0) {
+    const [cakeBalance, cakeBnbLpBalance, cakePoolBalance, cakeVaultBalance, ifoPoolBalance, poolsBalance, total] =
+      await getScores(
+        PANCAKE_SPACE,
+        [
+          strategies.cakeBalanceStrategy('v0'),
+          strategies.cakeBnbLpBalanceStrategy('v0'),
+          strategies.cakePoolBalanceStrategy('v0'),
+          strategies.cakeVaultBalanceStrategy,
+          strategies.ifoPoolBalanceStrategy,
+          strategies.creatPoolsBalanceStrategy(poolAddresses, 'v0'),
+          strategies.createTotalStrategy(poolAddresses, 'v0'),
+        ],
+        NETWORK,
+        [account],
+        blockNumber,
+      )
+
+    return {
+      poolsBalance: poolsBalance[account] ? poolsBalance[account] : 0,
+      total: total[account] ? total[account] : 0,
+      cakeBalance: cakeBalance[account] ? cakeBalance[account] : 0,
+      cakeVaultBalance: cakeVaultBalance[account] ? cakeVaultBalance[account] : 0,
+      ifoPoolBalance: ifoPoolBalance[account] ? ifoPoolBalance[account] : 0,
+      cakePoolBalance: cakePoolBalance[account] ? cakePoolBalance[account] : 0,
+      cakeBnbLpBalance: cakeBnbLpBalance[account] ? cakeBnbLpBalance[account] : 0,
+      voter: account,
+    }
+  }
+
+  const [total] = await getScores(PANCAKE_SPACE, STRATEGIES, NETWORK, [account], blockNumber)
+
+  return {
+    total: total[account] ? total[account] : 0,
+    voter: account,
+  }
 }
 
 export const calculateVoteResults = (votes: Vote[]): { [key: string]: Vote[] } => {
-  return votes.reduce((accum, vote) => {
-    const choiceText = vote.proposal.choices[vote.choice - 1]
+  if (votes) {
+    return votes.reduce((accum, vote) => {
+      const choiceText = vote.proposal.choices[vote.choice - 1]
 
-    return {
-      ...accum,
-      [choiceText]: accum[choiceText] ? [...accum[choiceText], vote] : [vote],
-    }
-  }, {})
+      return {
+        ...accum,
+        [choiceText]: accum[choiceText] ? [...accum[choiceText], vote] : [vote],
+      }
+    }, {})
+  }
+  return {}
 }
 
 export const getTotalFromVotes = (votes: Vote[]) => {
-  return votes.reduce((accum, vote) => {
-    const power = new BigNumber(vote.metadata?.votingPower)
-    return accum.plus(power)
-  }, BIG_ZERO)
+  if (votes) {
+    return votes.reduce((accum, vote) => {
+      let power = parseFloat(vote.metadata?.votingPower)
+
+      if (!power) {
+        power = 0
+      }
+
+      return accum + power
+    }, 0)
+  }
+  return 0
+}
+
+/**
+ * Get voting power by a list of voters, only total
+ */
+export async function getVotingPowerByCakeStrategy(voters: string[], blockNumber: number) {
+  const strategyResponse = await getScores(PANCAKE_SPACE, STRATEGIES, NETWORK, voters, blockNumber)
+
+  const result = voters.reduce<Record<string, string>>((accum, voter) => {
+    const defaultTotal = strategyResponse.reduce(
+      (total, scoreList) => total + (scoreList[voter] ? scoreList[voter] : 0),
+      0,
+    )
+
+    return {
+      ...accum,
+      [voter]: defaultTotal,
+    }
+  }, {})
+
+  return result
 }

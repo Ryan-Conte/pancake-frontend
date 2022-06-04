@@ -1,13 +1,16 @@
-import React from 'react'
 import styled from 'styled-components'
 import { useWeb3React } from '@web3-react/core'
 import { Box, Flex, Heading, Text, Button, Link, OpenNewIcon } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import { getRoundResult, Result } from 'state/predictions/helpers'
+import { REWARD_RATE } from 'state/predictions/config'
 import { getBscScanLink } from 'utils'
-import store from 'state'
-import { useGetCurrentEpoch, usePriceBnbBusd } from 'state/hooks'
+import { multiplyPriceByAmount } from 'utils/prices'
+import useBUSDPrice from 'hooks/useBUSDPrice'
+import { useGetCurrentEpoch } from 'state/predictions/hooks'
 import { Bet, BetPosition } from 'state/types'
+import { useConfig } from 'views/Predictions/context/ConfigProvider'
+
 import { formatBnb, getMultiplier, getNetPayout } from '../helpers'
 import PnlChart from './PnlChart'
 import SummaryRow from './SummaryRow'
@@ -57,18 +60,15 @@ const initialPnlSummary: PnlSummary = {
 }
 
 const getPnlSummary = (bets: Bet[], currentEpoch: number): PnlSummary => {
-  const state = store.getState()
-  const rewardRate = state.predictions.rewardRate / 100
-
   return bets.reduce((summary: PnlSummary, bet) => {
     const roundResult = getRoundResult(bet, currentEpoch)
     if (roundResult === Result.WIN) {
-      const payout = getNetPayout(bet, rewardRate)
+      const payout = getNetPayout(bet, REWARD_RATE)
       let { bestRound } = summary.won
       if (payout > bestRound.payout) {
         const { bullAmount, bearAmount, totalAmount } = bet.round
         const multiplier = getMultiplier(totalAmount, bet.position === BetPosition.BULL ? bullAmount : bearAmount)
-        bestRound = { id: bet.round.id, payout, multiplier }
+        bestRound = { id: bet.round.epoch.toString(), payout, multiplier }
       }
       return {
         won: {
@@ -84,7 +84,7 @@ const getPnlSummary = (bets: Bet[], currentEpoch: number): PnlSummary => {
         lost: summary.lost,
       }
     }
-    if (roundResult === Result.LOSE) {
+    if (roundResult === Result.LOSE || roundResult === Result.HOUSE) {
       return {
         lost: {
           rounds: summary.lost.rounds + 1,
@@ -106,9 +106,11 @@ const PnlTab: React.FC<PnlTabProps> = ({ hasBetHistory, bets }) => {
   const { t } = useTranslation()
   const { account } = useWeb3React()
   const currentEpoch = useGetCurrentEpoch()
-  const bnbBusdPrice = usePriceBnbBusd()
+  const { token } = useConfig()
+  const bnbBusdPrice = useBUSDPrice(token)
 
   const summary = getPnlSummary(bets, currentEpoch)
+
   const netResultAmount = summary.won.payout - summary.lost.amount
   const netResultIsPositive = netResultAmount > 0
   const avgPositionEntered = summary.entered.amount / summary.entered.rounds
@@ -117,6 +119,15 @@ const PnlTab: React.FC<PnlTabProps> = ({ hasBetHistory, bets }) => {
 
   // Guard in case user has only lost rounds
   const hasBestRound = summary.won.bestRound.payout !== 0
+
+  const netResultInUsd = multiplyPriceByAmount(bnbBusdPrice, netResultAmount)
+  const avgBnbWonInUsd = multiplyPriceByAmount(bnbBusdPrice, avgBnbWonPerRound)
+  const avgBnbWonInUsdDisplay = !Number.isNaN(avgBnbWonInUsd) ? `~${avgBnbWonInUsd.toFixed(2)}` : '~$0.00'
+  const betRoundInUsd = multiplyPriceByAmount(bnbBusdPrice, summary.won.bestRound.payout)
+  const avgPositionEnteredInUsd = multiplyPriceByAmount(bnbBusdPrice, avgPositionEntered)
+  const avgPositionEnteredInUsdDisplay = !Number.isNaN(avgPositionEnteredInUsd)
+    ? `~${avgPositionEnteredInUsd.toFixed(2)}`
+    : '~$0.00'
 
   return hasBetHistory ? (
     <Box p="16px">
@@ -130,10 +141,10 @@ const PnlTab: React.FC<PnlTabProps> = ({ hasBetHistory, bets }) => {
             {t('Net results')}
           </Text>
           <Text bold fontSize="24px" lineHeight="1" color={netResultIsPositive ? 'success' : 'failure'}>
-            {`${netResultIsPositive ? '+' : ''}${formatBnb(netResultAmount)} BNB`}
+            {`${netResultIsPositive ? '+' : ''}${formatBnb(netResultAmount)} ${token.symbol}`}
           </Text>
           <Text small color="textSubtle">
-            {`~$${formatBnb(bnbBusdPrice.times(netResultAmount).toNumber())}`}
+            {`~$${netResultInUsd.toFixed(2)}`}
           </Text>
         </Flex>
       </Flex>
@@ -142,10 +153,10 @@ const PnlTab: React.FC<PnlTabProps> = ({ hasBetHistory, bets }) => {
           {t('Average return / round')}
         </Text>
         <Text bold color={avgBnbWonIsPositive ? 'success' : 'failure'}>
-          {`${avgBnbWonIsPositive ? '+' : ''}${formatBnb(avgBnbWonPerRound)} BNB`}
+          {`${avgBnbWonIsPositive ? '+' : ''}${formatBnb(avgBnbWonPerRound)} ${token.symbol}`}
         </Text>
         <Text small color="textSubtle">
-          {`~$${formatBnb(bnbBusdPrice.times(avgBnbWonPerRound).toNumber())}`}
+          {avgBnbWonInUsdDisplay}
         </Text>
 
         {hasBestRound && (
@@ -154,13 +165,13 @@ const PnlTab: React.FC<PnlTabProps> = ({ hasBetHistory, bets }) => {
               {t('Best round: #%roundId%', { roundId: summary.won.bestRound.id })}
             </Text>
             <Flex alignItems="flex-end">
-              <Text bold color="success">{`+${formatBnb(summary.won.bestRound.payout)} BNB`}</Text>
+              <Text bold color="success">{`+${formatBnb(summary.won.bestRound.payout)} ${token.symbol}`}</Text>
               <Text ml="4px" small color="textSubtle">
                 ({summary.won.bestRound.multiplier.toFixed(2)}x)
               </Text>
             </Flex>
             <Text small color="textSubtle">
-              {`~$${formatBnb(bnbBusdPrice.times(summary.won.bestRound.payout).toNumber())}`}
+              {`~$${betRoundInUsd.toFixed(2)}`}
             </Text>
           </>
         )}
@@ -168,9 +179,9 @@ const PnlTab: React.FC<PnlTabProps> = ({ hasBetHistory, bets }) => {
         <Text mt="16px" bold color="textSubtle">
           {t('Average position entered / round')}
         </Text>
-        <Text bold>{`${formatBnb(avgPositionEntered)} BNB`}</Text>
+        <Text bold>{`${formatBnb(avgPositionEntered)} ${token.symbol}`}</Text>
         <Text small color="textSubtle">
-          {`~$${formatBnb(bnbBusdPrice.times(avgPositionEntered).toNumber())}`}
+          {avgPositionEnteredInUsdDisplay}
         </Text>
 
         <Divider />

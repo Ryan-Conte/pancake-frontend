@@ -1,9 +1,9 @@
-import React from 'react'
 import styled, { keyframes } from 'styled-components'
 import { Box, Flex, Heading, Skeleton } from '@pancakeswap/uikit'
 import { LotteryStatus } from 'config/constants/types'
 import { useTranslation } from 'contexts/Localization'
-import { useLottery, usePriceCakeBusd } from 'state/hooks'
+import { usePriceCakeBusd } from 'state/farms/hooks'
+import { useLottery } from 'state/lottery/hooks'
 import { getBalanceNumber } from 'utils/formatBalance'
 import Balance from 'components/Balance'
 import { TicketPurchaseCard } from '../svgs'
@@ -45,7 +45,7 @@ const floatingTicketLeft = keyframes`
   }  
 `
 
-const floatingTickeRight = keyframes`
+const floatingTicketRight = keyframes`
   from {
     transform: translate(0,  0px);
   }
@@ -107,7 +107,7 @@ const Decorations = styled.div`
   position: absolute;
   width: 100%;
   height: 100%;
-  background: url(/images/lottery/bg-star.svg);
+  background: url(/images/decorations/bg-star.svg);
   background-repeat: no-repeat;
   background-position: center 0;
 `
@@ -138,7 +138,7 @@ const StarsDecorations = styled(Box)`
     animation-delay: 0.2s;
   }
   & :nth-child(5) {
-    animation: ${floatingTickeRight} 6s ease-in-out infinite;
+    animation: ${floatingTicketRight} 6s ease-in-out infinite;
   }
 
   ${({ theme }) => theme.mediaQueries.sm} {
@@ -255,7 +255,7 @@ const Hero = () => {
         <img src="/images/lottery/ticket-l.png" width="123px" height="83px" alt="" />
         <img src="/images/lottery/ticket-r.png" width="121px" height="72px" alt="" />
       </StarsDecorations>
-      <Heading mb="8px" scale="md" color="#ffffff">
+      <Heading mb="8px" scale="md" color="#ffffff" id="lottery-hero-title">
         {t('The PancakeSwap Lottery')}
       </Heading>
       {getHeroHeading()}

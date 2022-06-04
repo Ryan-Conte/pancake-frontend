@@ -1,13 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useWeb3React } from '@web3-react/core'
 import styled, { css, keyframes } from 'styled-components'
 import { Button, CloseIcon, IconButton, TrophyGoldIcon } from '@pancakeswap/uikit'
 import { CSSTransition } from 'react-transition-group'
 import { useTranslation } from 'contexts/Localization'
 import { getBetHistory } from 'state/predictions/helpers'
-import { useGetPredictionsStatus, useIsHistoryPaneOpen } from 'state/hooks'
-import { useAppDispatch } from 'state'
+import { useGetPredictionsStatus, useIsHistoryPaneOpen } from 'state/predictions/hooks'
+import useLocalDispatch from 'contexts/LocalRedux/useLocalDispatch'
 import { setHistoryPaneState } from 'state/predictions'
+import { useConfig } from '../context/ConfigProvider'
 
 /**
  * @see https://github.com/animate-css/animate.css/tree/main/source
@@ -126,7 +127,8 @@ const CollectWinningsPopup = () => {
   const { account } = useWeb3React()
   const predictionStatus = useGetPredictionsStatus()
   const isHistoryPaneOpen = useIsHistoryPaneOpen()
-  const dispatch = useAppDispatch()
+  const dispatch = useLocalDispatch()
+  const { api } = useConfig()
 
   const handleOpenHistory = () => {
     dispatch(setHistoryPaneState(true))
@@ -142,7 +144,7 @@ const CollectWinningsPopup = () => {
     let isCancelled = false
     if (account) {
       timer.current = setInterval(async () => {
-        const bets = await getBetHistory({ user: account.toLowerCase(), claimed: false })
+        const bets = await getBetHistory({ user: account.toLowerCase(), claimed: false }, undefined, undefined, api)
 
         if (!isCancelled) {
           // Filter out bets that were not winners
@@ -161,7 +163,7 @@ const CollectWinningsPopup = () => {
       clearInterval(timer.current)
       isCancelled = true
     }
-  }, [account, timer, predictionStatus, setIsOpen, isHistoryPaneOpen])
+  }, [account, timer, predictionStatus, setIsOpen, isHistoryPaneOpen, api])
 
   // Any time the history pane is open make sure the popup closes
   useEffect(() => {
@@ -187,4 +189,4 @@ const CollectWinningsPopup = () => {
   )
 }
 
-export default CollectWinningsPopup
+export default memo(CollectWinningsPopup)

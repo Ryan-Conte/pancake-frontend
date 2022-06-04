@@ -1,13 +1,13 @@
-import React, { useEffect } from 'react'
+import { useEffect } from 'react'
 import styled from 'styled-components'
 import { Heading, ModalContainer, ModalHeader, ModalTitle, ModalBody, ModalCloseButton } from '@pancakeswap/uikit'
 import { useWeb3React } from '@web3-react/core'
 import { useTranslation } from 'contexts/Localization'
-import { delay } from 'lodash'
+import delay from 'lodash/delay'
 import confetti from 'canvas-confetti'
 import { LotteryTicketClaimData } from 'config/constants/types'
 import { useAppDispatch } from 'state'
-import { useLottery } from 'state/hooks'
+import { useLottery } from 'state/lottery/hooks'
 import { fetchUserLotteries } from 'state/lottery'
 import ClaimPrizesInner from './ClaimPrizesInner'
 
@@ -36,7 +36,6 @@ const BunnyDecoration = styled.div`
 
 const showConfetti = () => {
   confetti({
-    resize: true,
     particleCount: 200,
     startVelocity: 30,
     gravity: 0.5,
@@ -78,7 +77,7 @@ const ClaimPrizesModal: React.FC<ClaimPrizesModalModalProps> = ({ onDismiss, rou
         <ClaimPrizesInner
           onSuccess={() => {
             dispatch(fetchUserLotteries({ account, currentLotteryId }))
-            onDismiss()
+            onDismiss?.()
           }}
           roundsToClaim={roundsToClaim}
         />

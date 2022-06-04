@@ -1,17 +1,27 @@
 import BigNumber from 'bignumber.js'
-import { SerializedBigNumber, TranslatableText } from 'state/types'
+import { Token } from '@pancakeswap/sdk'
 
+export type TranslatableText =
+  | string
+  | {
+      key: string
+      data?: {
+        [key: string]: string | number
+      }
+    }
 export interface Address {
   97?: string
   56: string
 }
 
-export interface Token {
-  symbol: string
-  address?: Address
-  decimals?: number
+export interface SerializedToken {
+  chainId: number
+  address: string
+  decimals: number
+  symbol?: string
+  name?: string
   projectLink?: string
-  busdPrice?: string
+  logoURI?: string
 }
 
 export enum PoolIds {
@@ -39,6 +49,9 @@ export interface Ifo {
   articleUrl: string
   campaignId: string
   tokenOfferingPrice: number
+  description?: string
+  twitterUrl?: string
+  telegramUrl?: string
   version: number
   [PoolIds.poolBasic]?: IfoPoolInfo
   [PoolIds.poolUnlimited]: IfoPoolInfo
@@ -51,14 +64,15 @@ export enum PoolCategory {
   'AUTO' = 'Auto',
 }
 
-export interface FarmConfig {
+interface FarmConfigBaseProps {
   pid: number
+  v1pid?: number
   lpSymbol: string
   lpAddresses: Address
-  token: Token
-  quoteToken: Token
   multiplier?: string
   isCommunity?: boolean
+  auctionHostingStartSeconds?: number
+  auctionHostingEndDate?: string
   dual?: {
     rewardPerBlock: number
     earnLabel: string
@@ -66,10 +80,18 @@ export interface FarmConfig {
   }
 }
 
-export interface PoolConfig {
+export interface SerializedFarmConfig extends FarmConfigBaseProps {
+  token: SerializedToken
+  quoteToken: SerializedToken
+}
+
+export interface DeserializedFarmConfig extends FarmConfigBaseProps {
+  token: Token
+  quoteToken: Token
+}
+
+interface PoolConfigBaseProps {
   sousId: number
-  earningToken: Token
-  stakingToken: Token
   contractAddress: Address
   poolCategory: PoolCategory
   tokenPerBlock: string
@@ -77,6 +99,17 @@ export interface PoolConfig {
   harvest?: boolean
   isFinished?: boolean
   enableEmergencyWithdraw?: boolean
+  version?: number
+}
+
+export interface SerializedPoolConfig extends PoolConfigBaseProps {
+  earningToken: SerializedToken
+  stakingToken: SerializedToken
+}
+
+export interface DeserializedPoolConfig extends PoolConfigBaseProps {
+  earningToken: Token
+  stakingToken: Token
 }
 
 export type Images = {
@@ -84,43 +117,6 @@ export type Images = {
   md: string
   sm: string
   ipfs?: string
-}
-
-export type NftImages = {
-  blur?: string
-} & Images
-
-export type NftVideo = {
-  webm: string
-  mp4: string
-}
-
-export type NftSource = {
-  [key in NftType]: {
-    address: Address
-    identifierKey: string
-  }
-}
-
-export enum NftType {
-  PANCAKE = 'pancake',
-  MIXIE = 'mixie',
-}
-
-export type Nft = {
-  description: string
-  name: string
-  images: NftImages
-  sortOrder: number
-  type: NftType
-  video?: NftVideo
-
-  // Uniquely identifies the nft.
-  // Used for matching an NFT from the config with the data from the NFT's tokenURI
-  identifier: string
-
-  // Used to be "bunnyId". Used when minting NFT
-  variationId?: number | string
 }
 
 export type TeamImages = {
@@ -168,7 +164,7 @@ export interface LotteryTicket {
   status: boolean
   rewardBracket?: number
   roundId?: string
-  cakeReward?: SerializedBigNumber
+  cakeReward?: string
 }
 
 export interface LotteryTicketClaimData {
@@ -176,4 +172,64 @@ export interface LotteryTicketClaimData {
   allWinningTickets: LotteryTicket[]
   cakeTotal: BigNumber
   roundId: string
+}
+
+// Farm Auction
+export interface FarmAuctionBidderConfig {
+  account: string
+  farmName: string
+  tokenAddress: string
+  quoteToken: Token
+  tokenName: string
+  projectSite?: string
+  lpAddress?: string
+}
+
+// Note: this status is slightly different compared to 'status' config
+// from Farm Auction smart contract
+export enum AuctionStatus {
+  ToBeAnnounced, // No specific dates/blocks to display
+  Pending, // Auction is scheduled but not live yet (i.e. waiting for startBlock)
+  Open, // Auction is open for bids
+  Finished, // Auction end block is reached, bidding is not possible
+  Closed, // Auction was closed in smart contract
+}
+
+export interface Auction {
+  id: number
+  status: AuctionStatus
+  startBlock: number
+  startDate: Date
+  endBlock: number
+  endDate: Date
+  auctionDuration: number
+  initialBidAmount: number
+  topLeaderboard: number
+  leaderboardThreshold: BigNumber
+}
+
+export interface BidderAuction {
+  id: number
+  amount: BigNumber
+  claimed: boolean
+}
+
+export interface Bidder extends FarmAuctionBidderConfig {
+  position?: number
+  isTopPosition: boolean
+  samePositionAsAbove: boolean
+  amount: BigNumber
+}
+
+export interface ConnectedBidder {
+  account: string
+  isWhitelisted: boolean
+  bidderData?: Bidder
+}
+
+export enum FetchStatus {
+  Idle = 'IDLE',
+  Fetching = 'FETCHING',
+  Fetched = 'FETCHED',
+  Failed = 'FAILED',
 }

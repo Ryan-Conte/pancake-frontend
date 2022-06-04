@@ -1,23 +1,38 @@
-import React from 'react'
 import styled from 'styled-components'
 import every from 'lodash/every'
-import { Stepper, Step, StepStatus, Card, CardBody, Heading, Text, Button, Link, OpenNewIcon } from '@pancakeswap/uikit'
-import { BASE_ADD_LIQUIDITY_URL } from 'config'
-import { Ifo } from 'config/constants/types'
-import { WalletIfoData } from 'views/Ifos/types'
-import { useTranslation } from 'contexts/Localization'
-import useTokenBalance from 'hooks/useTokenBalance'
-import Container from 'components/Layout/Container'
-import { useProfile } from 'state/hooks'
-import { getAddress } from 'utils/addressHelpers'
+import {
+  Stepper,
+  Step,
+  StepStatus,
+  Card,
+  CardBody,
+  Heading,
+  Text,
+  Button,
+  Box,
+  CheckmarkIcon,
+  Flex,
+  useTooltip,
+  TooltipText,
+  Link,
+} from '@pancakeswap/uikit'
+import { NextLinkFromReactRouter as RouterLink } from 'components/NextLink'
+import { useWeb3React } from '@web3-react/core'
 
-interface Props {
-  ifo: Ifo
-  walletIfoData: WalletIfoData
+import { useTranslation } from 'contexts/Localization'
+import Container from 'components/Layout/Container'
+import { useProfile } from 'state/profile/hooks'
+import { nftsBaseUrl } from 'views/Nft/market/constants'
+import ConnectWalletButton from 'components/ConnectWalletButton'
+
+interface TypeProps {
+  ifoCurrencyAddress: string
+  hasClaimed: boolean
+  isCommitted: boolean
+  isLive?: boolean
 }
 
 const Wrapper = styled(Container)`
-  background: ${({ theme }) => theme.colors.gradients.bubblegum};
   margin-left: -16px;
   margin-right: -16px;
   padding-top: 48px;
@@ -29,17 +44,69 @@ const Wrapper = styled(Container)`
   }
 `
 
-const IfoSteps: React.FC<Props> = ({ ifo, walletIfoData }) => {
-  const { poolBasic, poolUnlimited } = walletIfoData
-  const { hasProfile } = useProfile()
+const InlineLink = styled(Link)`
+  display: inline;
+`
+
+const Step1 = () => {
   const { t } = useTranslation()
-  const { balance } = useTokenBalance(getAddress(ifo.currency.address))
-  const stepsValidationStatus = [
-    hasProfile,
-    balance.isGreaterThan(0),
-    poolBasic.amountTokenCommittedInLP.isGreaterThan(0) || poolUnlimited.amountTokenCommittedInLP.isGreaterThan(0),
-    poolBasic.hasClaimed || poolUnlimited.hasClaimed,
-  ]
+
+  const { targetRef, tooltip, tooltipVisible } = useTooltip(
+    <Box>
+      <span>
+        {t(
+          'IFO credit is calculated by average block balance in the IFO pool in over the staking period announced with each IFO proposal.',
+        )}
+      </span>{' '}
+      <InlineLink
+        external
+        href="https://medium.com/pancakeswap/initial-farm-offering-ifo-3-0-ifo-staking-pool-622d8bd356f1"
+      >
+        {t('Please refer to our blog post for more details.')}
+      </InlineLink>
+    </Box>,
+    {},
+  )
+
+  return (
+    <CardBody>
+      {tooltipVisible && tooltip}
+      <Heading as="h4" color="secondary" mb="16px">
+        {t('Stake CAKE in IFO pool')}
+      </Heading>
+      <Box>
+        <Text color="textSubtle" small>
+          {t(
+            'The maximum amount of CAKE user can commit to the Public Sale, is equal to the average CAKE balance in the IFO CAKE pool prior to the IFO. Stake more CAKE to increase the maximum CAKE you can commit to the sale. Missed this IFO? You can keep staking in the IFO CAKE Pool to join the next IFO sale.',
+          )}
+        </Text>
+        <TooltipText as="span" fontWeight={700} ref={targetRef} color="textSubtle" small>
+          {t('How does the IFO credit calculated?')}
+        </TooltipText>
+      </Box>
+    </CardBody>
+  )
+}
+
+const Step2 = () => {
+  const { t } = useTranslation()
+  return (
+    <CardBody>
+      <Heading as="h4" color="secondary" mb="16px">
+        {t('Commit CAKE')}
+      </Heading>
+      <Text color="textSubtle" small>
+        {t('When the IFO sales are live, you can “commit” your CAKE to buy the tokens being sold.')} <br />
+      </Text>
+    </CardBody>
+  )
+}
+
+const IfoSteps: React.FC<TypeProps> = () => {
+  const { hasActiveProfile } = useProfile()
+  const { account } = useWeb3React()
+  const { t } = useTranslation()
+  const stepsValidationStatus = [hasActiveProfile, false, false, false]
 
   const getStatusProp = (index: number): StepStatus => {
     const arePreviousValid = index === 0 ? true : every(stepsValidationStatus.slice(0, index), Boolean)
@@ -51,6 +118,30 @@ const IfoSteps: React.FC<Props> = ({ ifo, walletIfoData }) => {
 
   const renderCardBody = (step: number) => {
     const isStepValid = stepsValidationStatus[step]
+
+    const renderAccountStatus = () => {
+      if (!account) {
+        return <ConnectWalletButton />
+      }
+
+      if (isStepValid) {
+        return (
+          <Flex alignItems="center">
+            <Text color="success" bold mr="8px">
+              {t('Profile Active!')}
+            </Text>
+            <CheckmarkIcon color="success" />
+          </Flex>
+        )
+      }
+
+      return (
+        <Button as={RouterLink} to={`${nftsBaseUrl}/profile/${account.toLowerCase()}`}>
+          {t('Activate your Profile')}
+        </Button>
+      )
+    }
+
     switch (step) {
       case 0:
         return (
@@ -61,50 +152,13 @@ const IfoSteps: React.FC<Props> = ({ ifo, walletIfoData }) => {
             <Text color="textSubtle" small mb="16px">
               {t('You’ll need an active PancakeSwap Profile to take part in an IFO!')}
             </Text>
-            {isStepValid ? (
-              <Text color="success" bold>
-                {t('Profile Active!')}
-              </Text>
-            ) : (
-              <Button as={Link} href="/profile">
-                {t('Activate your Profile')}
-              </Button>
-            )}
+            {renderAccountStatus()}
           </CardBody>
         )
       case 1:
-        return (
-          <CardBody>
-            <Heading as="h4" color="secondary" mb="16px">
-              {t('Get CAKE-BNB LP Tokens')}
-            </Heading>
-            <Text color="textSubtle" small>
-              {t('Stake CAKE and BNB in the liquidity pool to get LP tokens.')} <br />
-              {t('You’ll spend them to buy IFO sale tokens.')}
-            </Text>
-            <Button
-              as={Link}
-              external
-              href={`${BASE_ADD_LIQUIDITY_URL}/BNB/0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82`}
-              endIcon={<OpenNewIcon color="white" />}
-              mt="16px"
-            >
-              {t('Get LP tokens')}
-            </Button>
-          </CardBody>
-        )
+        return <Step1 />
       case 2:
-        return (
-          <CardBody>
-            <Heading as="h4" color="secondary" mb="16px">
-              {t('Commit LP Tokens')}
-            </Heading>
-            <Text color="textSubtle" small>
-              {t('When the IFO sales are live, you can “commit” your LP tokens to buy the tokens being sold.')} <br />
-              {t('We recommend committing to the Basic Sale first, but you can do both if you like.')}
-            </Text>
-          </CardBody>
-        )
+        return <Step2 />
       case 3:
         return (
           <CardBody>
@@ -113,7 +167,7 @@ const IfoSteps: React.FC<Props> = ({ ifo, walletIfoData }) => {
             </Heading>
             <Text color="textSubtle" small>
               {t(
-                'After the IFO sales finish, you can claim any IFO tokens that you bought, and any unspent CAKE-BNB LP tokens will be returned to your wallet.',
+                'After the IFO sales finish, you can claim any IFO tokens that you bought, and any unspent CAKE tokens will be returned to your wallet.',
               )}
             </Text>
           </CardBody>
@@ -125,13 +179,18 @@ const IfoSteps: React.FC<Props> = ({ ifo, walletIfoData }) => {
 
   return (
     <Wrapper>
-      <Heading as="h2" scale="xl" color="secondary" mb="24px" textAlign="center">
-        {t('How to Take Part')}
+      <Heading id="ifo-how-to" as="h2" scale="xl" color="secondary" mb="24px" textAlign="center">
+        {t('How to Take Part in the Public Sale')}
       </Heading>
       <Stepper>
         {stepsValidationStatus.map((_, index) => (
-          // eslint-disable-next-line react/no-array-index-key
-          <Step key={index} index={index} status={getStatusProp(index)}>
+          <Step
+            // eslint-disable-next-line react/no-array-index-key
+            key={index}
+            index={index}
+            statusFirstPart={getStatusProp(index)}
+            statusSecondPart={getStatusProp(index + 1)}
+          >
             <Card>{renderCardBody(index)}</Card>
           </Step>
         ))}

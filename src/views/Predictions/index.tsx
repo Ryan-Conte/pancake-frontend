@@ -1,45 +1,46 @@
-import React, { useEffect, useRef } from 'react'
-import { useWeb3React } from '@web3-react/core'
-import { Helmet } from 'react-helmet-async'
 import { useMatchBreakpoints, useModal } from '@pancakeswap/uikit'
-import { useAppDispatch } from 'state'
-import { useGetPredictionsStatus, useInitialBlock, useIsChartPaneOpen } from 'state/hooks'
-import { initializePredictions } from 'state/predictions'
-import { PredictionStatus } from 'state/types'
-import usePersistState from 'hooks/usePersistState'
+import { useWeb3React } from '@web3-react/core'
+import { PageMeta } from 'components/Layout/Page'
 import PageLoader from 'components/Loader/PageLoader'
-import usePollOraclePrice from './hooks/usePollOraclePrice'
-import usePollPredictions from './hooks/usePollPredictions'
-import Container from './components/Container'
+import { useEffect, useRef } from 'react'
+import { useInitialBlock } from 'state/block/hooks'
+import { initializePredictions } from 'state/predictions'
+import { useChartView, useGetPredictionsStatus, useIsChartPaneOpen } from 'state/predictions/hooks'
+import { useAccountLocalEventListener } from 'hooks/useAccountLocalEventListener'
+import { PredictionsChartView, PredictionStatus } from 'state/types'
+import {
+  useUserPredictionAcceptedRisk,
+  useUserPredictionChainlinkChartDisclaimerShow,
+  useUserPredictionChartDisclaimerShow,
+} from 'state/user/hooks'
+import useLocalDispatch from 'contexts/LocalRedux/useLocalDispatch'
+
+import ChartDisclaimer from './components/ChartDisclaimer'
+import ChainlinkChartDisclaimer from './components/ChainlinkChartDisclaimer'
 import CollectWinningsPopup from './components/CollectWinningsPopup'
+import Container from './components/Container'
+import RiskDisclaimer from './components/RiskDisclaimer'
 import SwiperProvider from './context/SwiperProvider'
 import Desktop from './Desktop'
+import usePollPredictions from './hooks/usePollPredictions'
 import Mobile from './Mobile'
-import RiskDisclaimer from './components/RiskDisclaimer'
-import ChartDisclaimer from './components/ChartDisclaimer'
 
-const Predictions = () => {
-  const { isXl } = useMatchBreakpoints()
-  const [hasAcceptedRisk, setHasAcceptedRisk] = usePersistState(false, {
-    localStorageKey: 'pancake_predictions_accepted_risk',
-  })
-  const [hasAcceptedChart, setHasAcceptedChart] = usePersistState(false, {
-    localStorageKey: 'pancake_predictions_chart',
-  })
-  const { account } = useWeb3React()
-  const status = useGetPredictionsStatus()
+function Warnings() {
+  const [hasAcceptedRisk, setHasAcceptedRisk] = useUserPredictionAcceptedRisk()
+  const [showDisclaimer] = useUserPredictionChartDisclaimerShow()
+  const [showChainlinkDisclaimer] = useUserPredictionChainlinkChartDisclaimerShow()
   const isChartPaneOpen = useIsChartPaneOpen()
-  const dispatch = useAppDispatch()
-  const initialBlock = useInitialBlock()
-  const isDesktop = isXl
+  const chartView = useChartView()
   const handleAcceptRiskSuccess = () => setHasAcceptedRisk(true)
-  const handleAcceptChart = () => setHasAcceptedChart(true)
+
   const [onPresentRiskDisclaimer] = useModal(<RiskDisclaimer onSuccess={handleAcceptRiskSuccess} />, false)
-  const [onPresentChartDisclaimer] = useModal(<ChartDisclaimer onSuccess={handleAcceptChart} />, false)
+  const [onPresentChartDisclaimer] = useModal(<ChartDisclaimer />, false)
+  const [onPresentChainlinkChartDisclaimer] = useModal(<ChainlinkChartDisclaimer />, false)
 
   // TODO: memoize modal's handlers
   const onPresentRiskDisclaimerRef = useRef(onPresentRiskDisclaimer)
   const onPresentChartDisclaimerRef = useRef(onPresentChartDisclaimer)
+  const onPresentChainlinkChartDisclaimerRef = useRef(onPresentChainlinkChartDisclaimer)
 
   // Disclaimer
   useEffect(() => {
@@ -50,10 +51,29 @@ const Predictions = () => {
 
   // Chart Disclaimer
   useEffect(() => {
-    if (!hasAcceptedChart && isChartPaneOpen) {
+    if (isChartPaneOpen && showDisclaimer && chartView === PredictionsChartView.TradingView) {
       onPresentChartDisclaimerRef.current()
     }
-  }, [onPresentChartDisclaimerRef, hasAcceptedChart, isChartPaneOpen])
+  }, [onPresentChartDisclaimerRef, isChartPaneOpen, showDisclaimer, chartView])
+
+  // Chainlink Disclaimer
+  useEffect(() => {
+    if (isChartPaneOpen && showChainlinkDisclaimer && chartView === PredictionsChartView.Chainlink) {
+      onPresentChainlinkChartDisclaimerRef.current()
+    }
+  }, [onPresentChainlinkChartDisclaimerRef, isChartPaneOpen, showChainlinkDisclaimer, chartView])
+
+  return null
+}
+
+const Predictions = () => {
+  const { isDesktop } = useMatchBreakpoints()
+  const { account } = useWeb3React()
+  const status = useGetPredictionsStatus()
+  const dispatch = useLocalDispatch()
+  const initialBlock = useInitialBlock()
+
+  useAccountLocalEventListener()
 
   useEffect(() => {
     if (initialBlock > 0) {
@@ -63,7 +83,6 @@ const Predictions = () => {
   }, [initialBlock, dispatch, account])
 
   usePollPredictions()
-  usePollOraclePrice()
 
   if (status === PredictionStatus.INITIAL) {
     return <PageLoader />
@@ -71,9 +90,8 @@ const Predictions = () => {
 
   return (
     <>
-      <Helmet>
-        <script src="https://s3.tradingview.com/tv.js" type="text/javascript" id="tradingViewWidget" />
-      </Helmet>
+      <PageMeta />
+      <Warnings />
       <SwiperProvider>
         <Container>
           {isDesktop ? <Desktop /> : <Mobile />}

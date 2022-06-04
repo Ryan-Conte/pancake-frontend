@@ -1,53 +1,144 @@
-import { ThunkAction } from 'redux-thunk'
-import { AnyAction } from '@reduxjs/toolkit'
 import BigNumber from 'bignumber.js'
-import { ethers } from 'ethers'
-import { CampaignType, FarmConfig, LotteryStatus, LotteryTicket, Nft, PoolConfig, Team } from 'config/constants/types'
+import { BigNumber as EthersBigNumber } from '@ethersproject/bignumber'
+import {
+  CampaignType,
+  SerializedFarmConfig,
+  LotteryStatus,
+  LotteryTicket,
+  DeserializedPoolConfig,
+  SerializedPoolConfig,
+  Team,
+  TranslatableText,
+  DeserializedFarmConfig,
+  FetchStatus,
+} from 'config/constants/types'
+import { Token, ChainId } from '@pancakeswap/sdk'
+import { TokenInfo, TokenList, Tags } from '@uniswap/token-lists'
+import { parseUnits } from '@ethersproject/units'
+import { NftToken, State as NftMarketState } from './nftMarket/types'
 
-export type AppThunk<ReturnType = void> = ThunkAction<ReturnType, State, unknown, AnyAction>
+/**
+ * Token instances created from token info.
+ */
+export class WrappedTokenInfo extends Token {
+  public readonly tokenInfo: TokenInfo
+
+  public readonly tags: TagInfo[]
+
+  constructor(tokenInfo: TokenInfo, tags: TagInfo[]) {
+    super(tokenInfo.chainId, tokenInfo.address, tokenInfo.decimals, tokenInfo.symbol, tokenInfo.name)
+    this.tokenInfo = tokenInfo
+    this.tags = tags
+  }
+
+  public get logoURI(): string | undefined {
+    return this.tokenInfo.logoURI
+  }
+}
+
+export type TokenAddressMap = Readonly<{
+  [chainId in ChainId]: Readonly<{ [tokenAddress: string]: { token: WrappedTokenInfo; list: TokenList } }>
+}>
+
+type TagDetails = Tags[keyof Tags]
+export interface TagInfo extends TagDetails {
+  id: string
+}
+
+/**
+ * An empty result, useful as a default.
+ */
+export const EMPTY_LIST: TokenAddressMap = {
+  [ChainId.MAINNET]: {},
+  [ChainId.TESTNET]: {},
+}
+
+export enum GAS_PRICE {
+  default = '5',
+  fast = '6',
+  instant = '7',
+  testnet = '10',
+}
+
+export const GAS_PRICE_GWEI = {
+  default: parseUnits(GAS_PRICE.default, 'gwei').toString(),
+  fast: parseUnits(GAS_PRICE.fast, 'gwei').toString(),
+  instant: parseUnits(GAS_PRICE.instant, 'gwei').toString(),
+  testnet: parseUnits(GAS_PRICE.testnet, 'gwei').toString(),
+}
+
+export type DeserializedPoolVault = DeserializedPool & DeserializedCakeVault
 
 export interface BigNumberToJson {
   type: 'BigNumber'
   hex: string
 }
 
-export type TranslatableText =
-  | string
-  | {
-      key: string
-      data?: {
-        [key: string]: string | number
-      }
-    }
-
 export type SerializedBigNumber = string
 
-export interface Farm extends FarmConfig {
-  tokenAmountMc?: SerializedBigNumber
-  quoteTokenAmountMc?: SerializedBigNumber
+interface SerializedFarmUserData {
+  allowance: string
+  tokenBalance: string
+  stakedBalance: string
+  earnings: string
+}
+
+export interface DeserializedFarmUserData {
+  allowance: BigNumber
+  tokenBalance: BigNumber
+  stakedBalance: BigNumber
+  earnings: BigNumber
+}
+
+export interface SerializedFarm extends SerializedFarmConfig {
+  tokenPriceBusd?: string
+  quoteTokenPriceBusd?: string
   tokenAmountTotal?: SerializedBigNumber
   quoteTokenAmountTotal?: SerializedBigNumber
   lpTotalInQuoteToken?: SerializedBigNumber
   lpTotalSupply?: SerializedBigNumber
   tokenPriceVsQuote?: SerializedBigNumber
   poolWeight?: SerializedBigNumber
-  userData?: {
-    allowance: string
-    tokenBalance: string
-    stakedBalance: string
-    earnings: string
-  }
+  userData?: SerializedFarmUserData
 }
 
-export interface Pool extends PoolConfig {
-  totalStaked?: BigNumber
-  stakingLimit?: BigNumber
+export interface DeserializedFarm extends DeserializedFarmConfig {
+  tokenPriceBusd?: string
+  quoteTokenPriceBusd?: string
+  tokenAmountTotal?: BigNumber
+  quoteTokenAmountTotal?: BigNumber
+  lpTotalInQuoteToken?: BigNumber
+  lpTotalSupply?: BigNumber
+  tokenPriceVsQuote?: BigNumber
+  poolWeight?: BigNumber
+  userData?: DeserializedFarmUserData
+}
+
+export enum VaultKey {
+  CakeVaultV1 = 'cakeVaultV1',
+  CakeVault = 'cakeVault',
+  IfoPool = 'ifoPool',
+}
+
+interface CorePoolProps {
   startBlock?: number
   endBlock?: number
   apr?: number
+  rawApr?: number
   stakingTokenPrice?: number
   earningTokenPrice?: number
-  isAutoVault?: boolean
+  vaultKey?: VaultKey
+}
+
+export interface DeserializedPool extends DeserializedPoolConfig, CorePoolProps {
+  totalStaked?: BigNumber
+  stakingLimit?: BigNumber
+  stakingLimitEndBlock?: number
+  profileRequirement?: {
+    required: boolean
+    thresholdPoints: BigNumber
+  }
+  userDataLoaded?: boolean
   userData?: {
     allowance: BigNumber
     stakingTokenBalance: BigNumber
@@ -56,80 +147,137 @@ export interface Pool extends PoolConfig {
   }
 }
 
+export interface SerializedPool extends SerializedPoolConfig, CorePoolProps {
+  totalStaked?: SerializedBigNumber
+  stakingLimit?: SerializedBigNumber
+  numberBlocksForUserLimit?: number
+  profileRequirement?: {
+    required: boolean
+    thresholdPoints: SerializedBigNumber
+  }
+  userData?: {
+    allowance: SerializedBigNumber
+    stakingTokenBalance: SerializedBigNumber
+    stakedBalance: SerializedBigNumber
+    pendingReward: SerializedBigNumber
+  }
+}
+
 export interface Profile {
   userId: number
   points: number
   teamId: number
-  nftAddress: string
+  collectionAddress: string
   tokenId: number
   isActive: boolean
   username: string
-  nft?: Nft
-  team: Team
+  nft?: NftToken
+  team?: Team
   hasRegistered: boolean
 }
 
 // Slices states
 
-export interface FarmsState {
-  data: Farm[]
+export interface SerializedFarmsState {
+  data: SerializedFarm[]
   loadArchivedFarmsData: boolean
   userDataLoaded: boolean
+  loadingKeys: Record<string, boolean>
+  poolLength?: number
+  regularCakePerBlock?: number
 }
 
-export interface VaultFees {
+export interface DeserializedFarmsState {
+  data: DeserializedFarm[]
+  loadArchivedFarmsData: boolean
+  userDataLoaded: boolean
+  poolLength?: number
+  regularCakePerBlock?: number
+}
+
+export interface SerializedVaultFees {
   performanceFee: number
-  callFee: number
   withdrawalFee: number
   withdrawalFeePeriod: number
 }
 
-export interface VaultUser {
+export interface DeserializedVaultFees extends SerializedVaultFees {
+  performanceFeeAsDecimal: number
+}
+
+interface SerializedVaultUser {
   isLoading: boolean
-  userShares: string
-  cakeAtLastUserAction: string
+  userShares: SerializedBigNumber
+  cakeAtLastUserAction: SerializedBigNumber
   lastDepositedTime: string
   lastUserActionTime: string
 }
-export interface CakeVault {
-  totalShares?: string
-  pricePerFullShare?: string
-  totalCakeInVault?: string
-  estimatedCakeBountyReward?: string
-  totalPendingCakeHarvest?: string
-  fees?: VaultFees
-  userData?: VaultUser
+
+export interface SerializedLockedVaultUser extends SerializedVaultUser {
+  lockStartTime: string
+  lockEndTime: string
+  userBoostedShare: SerializedBigNumber
+  locked: boolean
+  lockedAmount: SerializedBigNumber
+  currentPerformanceFee: SerializedBigNumber
+  currentOverdueFee: SerializedBigNumber
+}
+
+export interface DeserializedVaultUser {
+  isLoading: boolean
+  userShares: BigNumber
+  cakeAtLastUserAction: BigNumber
+  lastDepositedTime: string
+  lastUserActionTime: string
+}
+
+export interface DeserializedLockedVaultUser extends DeserializedVaultUser {
+  lastDepositedTime: string
+  lastUserActionTime: string
+  lockStartTime: string
+  lockEndTime: string
+  userBoostedShare: BigNumber
+  locked: boolean
+  lockedAmount: BigNumber
+  balance: {
+    cakeAsNumberBalance: number
+    cakeAsBigNumber: BigNumber
+    cakeAsDisplayBalance: string
+  }
+  currentPerformanceFee: BigNumber
+  currentOverdueFee: BigNumber
+}
+
+export interface DeserializedIfoVaultUser extends DeserializedVaultUser {
+  credit: string
+}
+
+export interface DeserializedCakeVault {
+  totalShares?: BigNumber
+  totalLockedAmount?: BigNumber
+  pricePerFullShare?: BigNumber
+  totalCakeInVault?: BigNumber
+  fees?: DeserializedVaultFees
+  userData?: DeserializedLockedVaultUser
+}
+
+export interface SerializedCakeVault {
+  totalShares?: SerializedBigNumber
+  totalLockedAmount?: SerializedBigNumber
+  pricePerFullShare?: SerializedBigNumber
+  totalCakeInVault?: SerializedBigNumber
+  fees?: SerializedVaultFees
+  userData?: SerializedLockedVaultUser
 }
 
 export interface PoolsState {
-  data: Pool[]
-  cakeVault: CakeVault
+  data: SerializedPool[]
+  cakeVault: SerializedCakeVault
   userDataLoaded: boolean
-}
-
-export interface ProfileState {
-  isInitialized: boolean
-  isLoading: boolean
-  hasRegistered: boolean
-  data: Profile
-}
-
-export type TeamResponse = {
-  0: string
-  1: string
-  2: string
-  3: string
-  4: boolean
 }
 
 export type TeamsById = {
   [key: string]: Team
-}
-
-export interface TeamsState {
-  isInitialized: boolean
-  isLoading: boolean
-  data: TeamsById
 }
 
 export interface Achievement {
@@ -140,27 +288,6 @@ export interface Achievement {
   description?: TranslatableText
   badge: string
   points: number
-}
-
-export interface AchievementState {
-  data: Achievement[]
-}
-
-// Block
-
-export interface BlockState {
-  currentBlock: number
-  initialBlock: number
-}
-
-// Collectibles
-
-export interface CollectiblesState {
-  isInitialized: boolean
-  isLoading: boolean
-  data: {
-    [key: string]: number[]
-  }
 }
 
 // Predictions
@@ -178,24 +305,35 @@ export enum PredictionStatus {
   ERROR = 'error',
 }
 
+export enum PredictionsChartView {
+  TradingView = 'TradingView',
+  Chainlink = 'Chainlink Oracle',
+}
+
 export interface Round {
   id: string
   epoch: number
-  failed?: boolean
-  startBlock: number
+  position: BetPosition
+  failed: boolean
   startAt: number
+  startBlock: number
+  startHash: string
   lockAt: number
   lockBlock: number
+  lockHash: string
   lockPrice: number
-  endBlock: number
+  lockRoundId: string
+  closeAt: number
+  closeBlock: number
+  closeHash: string
   closePrice: number
+  closeRoundId: string
   totalBets: number
   totalAmount: number
   bullBets: number
+  bullAmount: number
   bearBets: number
   bearAmount: number
-  bullAmount: number
-  position: BetPosition
   bets?: Bet[]
 }
 
@@ -210,21 +348,34 @@ export interface Bet {
   amount: number
   position: BetPosition
   claimed: boolean
+  claimedAt: number
+  claimedBlock: number
   claimedHash: string
+  claimedBNB: number
+  claimedNetBNB: number
+  createdAt: number
+  updatedAt: number
   user?: PredictionUser
-  round: Round
+  round?: Round
 }
 
 export interface PredictionUser {
   id: string
-  address: string
+  createdAt: number
+  updatedAt: number
   block: number
   totalBets: number
+  totalBetsBull: number
+  totalBetsBear: number
   totalBNB: number
-}
-
-export interface HistoryData {
-  [key: string]: Bet[]
+  totalBNBBull: number
+  totalBNBBear: number
+  totalBetsClaimed: number
+  totalBNBClaimed: number
+  winRate: number
+  averageBNB: number
+  netBNB: number
+  bets?: Bet[]
 }
 
 export enum HistoryFilter {
@@ -251,15 +402,15 @@ export interface ReduxNodeLedger {
 
 export interface NodeLedger {
   position: BetPosition
-  amount: ethers.BigNumber
+  amount: EthersBigNumber
   claimed: boolean
 }
 
 export interface ReduxNodeRound {
   epoch: number
-  startBlock: number
-  lockBlock: number | null
-  endBlock: number | null
+  startTimestamp: number | null
+  lockTimestamp: number | null
+  closeTimestamp: number | null
   lockPrice: BigNumberToJson | null
   closePrice: BigNumberToJson | null
   totalAmount: BigNumberToJson
@@ -268,42 +419,66 @@ export interface ReduxNodeRound {
   rewardBaseCalAmount: BigNumberToJson
   rewardAmount: BigNumberToJson
   oracleCalled: boolean
+  lockOracleId: string
+  closeOracleId: string
 }
 
 export interface NodeRound {
   epoch: number
-  startBlock: number
-  lockBlock: number
-  endBlock: number
-  lockPrice: ethers.BigNumber
-  closePrice: ethers.BigNumber
-  totalAmount: ethers.BigNumber
-  bullAmount: ethers.BigNumber
-  bearAmount: ethers.BigNumber
-  rewardBaseCalAmount: ethers.BigNumber
-  rewardAmount: ethers.BigNumber
+  startTimestamp: number | null
+  lockTimestamp: number | null
+  closeTimestamp: number | null
+  lockPrice: EthersBigNumber | null
+  closePrice: EthersBigNumber | null
+  totalAmount: EthersBigNumber
+  bullAmount: EthersBigNumber
+  bearAmount: EthersBigNumber
+  rewardBaseCalAmount: EthersBigNumber
+  rewardAmount: EthersBigNumber
   oracleCalled: boolean
+  closeOracleId: string
+  lockOracleId: string
+}
+
+export type LeaderboardFilterTimePeriod = '1d' | '7d' | '1m' | 'all'
+
+export interface LeaderboardFilter {
+  address?: string
+  orderBy?: string
+  timePeriod?: LeaderboardFilterTimePeriod
 }
 
 export interface PredictionsState {
   status: PredictionStatus
   isLoading: boolean
   isHistoryPaneOpen: boolean
+  chartView: PredictionsChartView
   isChartPaneOpen: boolean
   isFetchingHistory: boolean
   historyFilter: HistoryFilter
   currentEpoch: number
-  currentRoundStartBlockNumber: number
-  intervalBlocks: number
-  bufferBlocks: number
+  intervalSeconds: number
   minBetAmount: string
-  rewardRate: number
-  lastOraclePrice: string
-  history: HistoryData
+  bufferSeconds: number
+  history: Bet[]
+  totalHistory: number
+  currentHistoryPage: number
+  hasHistoryLoaded: boolean
   rounds?: RoundData
   ledgers?: LedgerData
   claimableStatuses: {
     [key: string]: boolean
+  }
+  leaderboard: {
+    selectedAddress: string
+    loadingState: FetchStatus
+    filters: LeaderboardFilter
+    skip: number
+    hasMoreResults: boolean
+    addressResults: {
+      [key: string]: PredictionUser
+    }
+    results: PredictionUser[]
   }
 }
 
@@ -352,6 +527,7 @@ export interface Proposal {
   id: string
   snapshot: string
   space: Space
+  votes: number
   start: number
   state: ProposalState
   title: string
@@ -368,26 +544,6 @@ export interface Vote {
   choice: number
   metadata?: {
     votingPower: string
-    verificationHash: string
-  }
-  _inValid?: boolean
-}
-
-export enum VotingStateLoadingStatus {
-  INITIAL = 'initial',
-  IDLE = 'idle',
-  LOADING = 'loading',
-  ERROR = 'error',
-}
-
-export interface VotingState {
-  proposalLoadingStatus: VotingStateLoadingStatus
-  proposals: {
-    [key: string]: Proposal
-  }
-  voteLoadingStatus: VotingStateLoadingStatus
-  votes: {
-    [key: string]: Vote[]
   }
 }
 
@@ -464,19 +620,20 @@ export interface UserRound {
   tickets?: LotteryTicket[]
 }
 
-export type UserTicketsResponse = [ethers.BigNumber[], number[], boolean[]]
+export interface PredictionConfig {
+  address: string
+  api: string
+  chainlinkOracleAddress: string
+  token: Token
+}
 
 // Global state
 
 export interface State {
-  achievements: AchievementState
-  block: BlockState
-  farms: FarmsState
+  farms: SerializedFarmsState
+  farmsV1: SerializedFarmsState
   pools: PoolsState
   predictions: PredictionsState
-  profile: ProfileState
-  teams: TeamsState
-  collectibles: CollectiblesState
-  voting: VotingState
   lottery: LotteryState
+  nftMarket: NftMarketState
 }

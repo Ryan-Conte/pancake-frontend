@@ -1,28 +1,42 @@
-import React from 'react'
-import { ifosConfig } from 'config/constants'
+import { useMemo } from 'react'
 import useGetPublicIfoV2Data from 'views/Ifos/hooks/v2/useGetPublicIfoData'
-import useGetWalletIfoV2Data from 'views/Ifos/hooks/v2/useGetWalletIfoData'
-import IfoFoldableCard from './components/IfoFoldableCard'
-import IfoLayout from './components/IfoLayout'
+import useGetWalletIfoV3Data from 'views/Ifos/hooks/v3/useGetWalletIfoData'
+
+import { Ifo } from 'config/constants/types'
+
+import { IfoCurrentCard } from './components/IfoFoldableCard'
+import IfoContainer from './components/IfoContainer'
 import IfoSteps from './components/IfoSteps'
-import IfoQuestions from './components/IfoQuestions'
 
-/**
- * Note: currently there should be only 1 active IFO at a time
- */
-const activeIfo = ifosConfig.find((ifo) => ifo.isActive)
+interface TypeProps {
+  activeIfo: Ifo
+}
 
-const Ifo = () => {
+const CurrentIfo: React.FC<TypeProps> = ({ activeIfo }) => {
   const publicIfoData = useGetPublicIfoV2Data(activeIfo)
-  const walletIfoData = useGetWalletIfoV2Data(activeIfo)
+  const walletIfoData = useGetWalletIfoV3Data(activeIfo)
+
+  const { poolBasic, poolUnlimited } = walletIfoData
+
+  const isCommitted = useMemo(
+    () =>
+      poolBasic.amountTokenCommittedInLP.isGreaterThan(0) || poolUnlimited.amountTokenCommittedInLP.isGreaterThan(0),
+    [poolBasic.amountTokenCommittedInLP, poolUnlimited.amountTokenCommittedInLP],
+  )
 
   return (
-    <IfoLayout>
-      <IfoFoldableCard ifo={activeIfo} publicIfoData={publicIfoData} walletIfoData={walletIfoData} isInitiallyVisible />
-      <IfoSteps ifo={activeIfo} walletIfoData={walletIfoData} />
-      <IfoQuestions />
-    </IfoLayout>
+    <IfoContainer
+      ifoSection={<IfoCurrentCard ifo={activeIfo} publicIfoData={publicIfoData} walletIfoData={walletIfoData} />}
+      ifoSteps={
+        <IfoSteps
+          isLive={publicIfoData.status === 'live'}
+          hasClaimed={poolBasic.hasClaimed || poolUnlimited.hasClaimed}
+          isCommitted={isCommitted}
+          ifoCurrencyAddress={activeIfo.currency.address}
+        />
+      }
+    />
   )
 }
 
-export default Ifo
+export default CurrentIfo

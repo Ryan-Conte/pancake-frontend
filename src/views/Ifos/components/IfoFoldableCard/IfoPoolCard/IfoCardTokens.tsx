@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Text,
   Flex,
@@ -10,10 +9,15 @@ import {
   Button,
   AutoRenewIcon,
   BunnyPlaceholderIcon,
+  Message,
+  MessageText,
+  ErrorIcon,
 } from '@pancakeswap/uikit'
 import { useWeb3React } from '@web3-react/core'
-import { Ifo, PoolIds, Token } from 'config/constants/types'
+import { Token } from '@pancakeswap/sdk'
+import { Ifo, PoolIds } from 'config/constants/types'
 import tokens from 'config/constants/tokens'
+import { cakeBnbLpToken } from 'config/constants/ifo'
 import { PublicIfoData, WalletIfoData } from 'views/Ifos/types'
 import { useTranslation } from 'contexts/Localization'
 import { getBalanceNumber } from 'utils/formatBalance'
@@ -21,6 +25,9 @@ import { TokenImage, TokenPairImage } from 'components/TokenImage'
 import { EnableStatus } from '../types'
 import PercentageOfTotal from './PercentageOfTotal'
 import { SkeletonCardTokens } from './Skeletons'
+import IFORequirements from './IFORequirements'
+import { MessageTextLink } from '../../IfoCardStyles'
+import StakeVaultButton from '../StakeVaultButton'
 
 interface TokenSectionProps extends FlexProps {
   primaryToken?: Token
@@ -57,8 +64,11 @@ const TokenSection: React.FC<TokenSectionProps> = ({ primaryToken, secondaryToke
   )
 }
 
-const CakeBnbTokenSection: React.FC<TokenSectionProps> = (props) => {
-  return <TokenSection primaryToken={tokens.cake} secondaryToken={tokens.wbnb} {...props} />
+const CommitTokenSection: React.FC<TokenSectionProps & { commitToken: Token }> = ({ commitToken, ...props }) => {
+  if (commitToken.equals(cakeBnbLpToken)) {
+    return <TokenSection primaryToken={tokens.cake} secondaryToken={tokens.wbnb} {...props} />
+  }
+  return <TokenSection primaryToken={commitToken} {...props} />
 }
 
 const Label = (props) => <Text bold fontSize="12px" color="secondary" textTransform="uppercase" {...props} />
@@ -74,9 +84,28 @@ interface IfoCardTokensProps {
   isLoading: boolean
   onApprove: () => Promise<any>
   enableStatus: EnableStatus
+  criterias?: any
+  isEligible?: boolean
+}
+
+const OnSaleInfo = ({ token, saleAmount, distributionRatio }) => {
+  const { t } = useTranslation()
+  return (
+    <TokenSection primaryToken={token}>
+      <Flex flexDirection="column">
+        <Label>{t('On sale').toUpperCase()}</Label>
+        <Value>{saleAmount}</Value>
+        <Text fontSize="14px" color="textSubtle">
+          {t('%ratio%% of total sale', { ratio: distributionRatio })}
+        </Text>
+      </Flex>
+    </TokenSection>
+  )
 }
 
 const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
+  criterias,
+  isEligible,
   poolId,
   ifo,
   publicIfoData,
@@ -90,7 +119,7 @@ const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
   const { t } = useTranslation()
   const { targetRef, tooltip, tooltipVisible } = useTooltip(
     t(
-      'Sorry, you didn’t contribute enough LP tokens to meet the minimum threshold. You didn’t buy anything in this sale, but you can still reclaim your LP tokens.',
+      'Sorry, you didn’t contribute enough CAKE to meet the minimum threshold. You didn’t buy anything in this sale, but you can still reclaim your CAKE.',
     ),
     { placement: 'bottom' },
   )
@@ -106,22 +135,93 @@ const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
     if (isLoading) {
       return <SkeletonCardTokens />
     }
-    if (account && !hasProfile) {
-      if (publicIfoData.status === 'finished') {
-        return <Text textAlign="center">{t('Activate PancakeSwap Profile to take part in next IFO‘s!')}</Text>
-      }
-      return <Text textAlign="center">{t('You need an active PancakeSwap Profile to take part in an IFO!')}</Text>
+    if (!account) {
+      return <OnSaleInfo token={token} distributionRatio={distributionRatio} saleAmount={ifo[poolId].saleAmount} />
     }
+
+    let message
+
+    if (account && !hasProfile) {
+      message = (
+        <Message my="24px" p="8px" variant="warning">
+          <Box>
+            <MessageText display="inline">
+              {publicIfoData.status === 'finished'
+                ? t('Activate PancakeSwap Profile to take part in next IFO‘s!')
+                : t('You need an active PancakeSwap Profile to take part in an IFO!')}
+            </MessageText>{' '}
+            <MessageTextLink href="/ifo#ifo-how-to" color="#D67E0A" display="inline">
+              {t('How does it work?')} »
+            </MessageTextLink>
+          </Box>
+        </Message>
+      )
+    }
+
+    const ifov31Msg =
+      ifo.version === 3.1 && poolId === PoolIds.poolBasic && criterias?.length > 0 ? (
+        <Box mt="16px">
+          {!isEligible && (
+            <Message mb="24px" p="8px" variant="warning" icon={<ErrorIcon color="warning" width="24px" />}>
+              <MessageText small display="inline">
+                {t('Meet any one of the following requirements to be eligible.')}
+              </MessageText>
+            </Message>
+          )}
+          <IFORequirements
+            criterias={criterias}
+            admissionProfile={publicPoolCharacteristics?.admissionProfile}
+            pointThreshold={publicPoolCharacteristics?.pointThreshold}
+          />
+          {isEligible && (
+            <Message mt="24px" p="8px" variant="success">
+              <MessageText small display="inline">
+                {t('You are eligible to participate in this Private Sale!')}
+              </MessageText>
+            </Message>
+          )}
+        </Box>
+      ) : null
+
+    // TODO: Need checking in the future
+    // (ifo.version === 3 || (ifo.version === 3.1 && poolId === PoolIds.poolUnlimited)) && getBalanceNumber(credit) === 0)
+    if (ifo.version === 3 || (ifo.version === 3.1 && poolId === PoolIds.poolUnlimited)) {
+      message = (
+        <Message my="24px" p="8px" variant="danger">
+          <Box>
+            <MessageText display="inline">
+              {t('You don’t have any average CAKE balance available to commit in the IFO CAKE pool.')}
+            </MessageText>{' '}
+            <MessageTextLink display="inline" fontWeight={700} href="/ifo#ifo-how-to" color="failure">
+              {t('How does it work?')} »
+            </MessageTextLink>
+          </Box>
+        </Message>
+      )
+    }
+
+    if (account && !hasProfile) {
+      return (
+        <>
+          <OnSaleInfo token={token} distributionRatio={distributionRatio} saleAmount={ifo[poolId].saleAmount} />
+          {message}
+        </>
+      )
+    }
+
+    message = ifov31Msg || message
+
     if (publicIfoData.status === 'coming_soon') {
       return (
         <>
-          <TokenSection>
+          <TokenSection primaryToken={ifo.token}>
             <Label>{t('On sale')}</Label>
             <Value>{ifo[poolId].saleAmount}</Value>
           </TokenSection>
           <Text fontSize="14px" color="textSubtle" pl="48px">
             {t('%ratio%% of total sale', { ratio: distributionRatio })}
           </Text>
+          {message}
           {enableStatus !== EnableStatus.ENABLED && account && (
             <Button
               width="100%"
@@ -139,18 +239,19 @@ const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
     if (publicIfoData.status === 'live') {
       return (
         <>
-          <CakeBnbTokenSection mb="24px">
+          <CommitTokenSection commitToken={ifo.currency} mb="24px">
             <Label>{t('Your %symbol% committed', { symbol: currency.symbol })}</Label>
             <Value>{getBalanceNumber(userPoolCharacteristics.amountTokenCommittedInLP, currency.decimals)}</Value>
             <PercentageOfTotal
               userAmount={userPoolCharacteristics.amountTokenCommittedInLP}
               totalAmount={publicPoolCharacteristics.totalAmountPool}
             />
-          </CakeBnbTokenSection>
+          </CommitTokenSection>
           <TokenSection primaryToken={ifo.token}>
             <Label>{t('%symbol% to receive', { symbol: token.symbol })}</Label>
             <Value>{getBalanceNumber(userPoolCharacteristics.offeringAmountInToken, token.decimals)}</Value>
           </TokenSection>
+          {ifov31Msg}
         </>
       )
     }
@@ -158,13 +259,26 @@ const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
       return userPoolCharacteristics.amountTokenCommittedInLP.isEqualTo(0) ? (
         <Flex flexDirection="column" alignItems="center">
           <BunnyPlaceholderIcon width={80} mb="16px" />
-          <Text>{t('You didn’t participate in this sale!')}</Text>
+          <Text fontWeight={600}>{t('You didn’t participate in this sale!')}</Text>
+          {ifov31Msg || (
+            <>
+              <Text textAlign="center" fontSize="14px">
+                {t('To participate in the next IFO, stake some CAKE in the IFO CAKE pool!')}
+              </Text>
+              <MessageTextLink href="/ifo#ifo-how-to" textAlign="center">
+                {t('How does it work?')} »
+              </MessageTextLink>
+              <StakeVaultButton mt="24px" />
+            </>
+          )}
         </Flex>
       ) : (
         <>
-          <CakeBnbTokenSection mb="24px">
+          <CommitTokenSection commitToken={ifo.currency} mb="24px">
             <Label>
-              {t(hasClaimed ? 'Your %symbol% RECLAIMED' : 'Your %symbol% TO RECLAIM', { symbol: currency.symbol })}
+              {hasClaimed
+                ? t('Your %symbol% RECLAIMED', { symbol: currency.symbol })
+                : t('Your %symbol% TO RECLAIM', { symbol: currency.symbol })}
             </Label>
             <Flex alignItems="center">
               <Value>{getBalanceNumber(userPoolCharacteristics.refundingAmountInLP, currency.decimals)}</Value>
@@ -174,9 +288,14 @@ const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
               userAmount={userPoolCharacteristics.amountTokenCommittedInLP}
               totalAmount={publicPoolCharacteristics.totalAmountPool}
             />
-          </CakeBnbTokenSection>
+          </CommitTokenSection>
           <TokenSection primaryToken={ifo.token}>
-            <Label> {t(hasClaimed ? '%symbol% received' : '%symbol% to receive', { symbol: token.symbol })}</Label>
+            <Label>
+              {' '}
+              {hasClaimed
+                ? t('%symbol% received', { symbol: token.symbol })
+                : t('%symbol% to receive', { symbol: token.symbol })}
+            </Label>
             <Flex alignItems="center">
               <Value>{getBalanceNumber(userPoolCharacteristics.offeringAmountInToken, token.decimals)}</Value>
               {!hasClaimed && userPoolCharacteristics.offeringAmountInToken.isEqualTo(0) && (
@@ -187,13 +306,18 @@ const IfoCardTokens: React.FC<IfoCardTokensProps> = ({
               {hasClaimed && <CheckmarkCircleIcon color="success" ml="8px" />}
             </Flex>
           </TokenSection>
+          {hasClaimed && (
+            <Message my="24px" p="8px" variant="success">
+              <MessageText>{t('You’ve successfully claimed tokens back.')}</MessageText>
+            </Message>
+          )}
         </>
       )
     }
     return null
   }
   return (
-    <Box pb="24px">
+    <Box>
       {tooltipVisible && tooltip}
       {renderTokenSection()}
     </Box>

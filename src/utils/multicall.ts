@@ -1,6 +1,6 @@
-import { ethers } from 'ethers'
+import { Interface } from '@ethersproject/abi'
+import { CallOverrides } from '@ethersproject/contracts'
 import { getMulticallContract } from 'utils/contractHelpers'
-import { MultiCallResponse } from './types'
 
 export interface Call {
   address: string // Address of the contract
@@ -8,49 +8,48 @@ export interface Call {
   params?: any[] // Function params
 }
 
-interface MulticallOptions {
+export interface MulticallOptions extends CallOverrides {
   requireSuccess?: boolean
 }
 
 const multicall = async <T = any>(abi: any[], calls: Call[]): Promise<T> => {
-  try {
-    const multi = getMulticallContract()
-    const itf = new ethers.utils.Interface(abi)
+  const multi = getMulticallContract()
+  const itf = new Interface(abi)
 
-    const calldata = calls.map((call) => [call.address.toLowerCase(), itf.encodeFunctionData(call.name, call.params)])
-    const { returnData } = await multi.aggregate(calldata)
+  const calldata = calls.map((call) => ({
+    target: call.address.toLowerCase(),
+    callData: itf.encodeFunctionData(call.name, call.params),
+  }))
+  const { returnData } = await multi.aggregate(calldata)
 
-    const res = returnData.map((call, i) => itf.decodeFunctionResult(calls[i].name, call))
+  const res = returnData.map((call, i) => itf.decodeFunctionResult(calls[i].name, call))
 
-    return res
-  } catch (error) {
-    throw new Error(error)
-  }
+  return res as any
 }
 
 /**
  * Multicall V2 uses the new "tryAggregate" function. It is different in 2 ways
  *
  * 1. If "requireSuccess" is false multicall will not bail out if one of the calls fails
- * 2. The return inclues a boolean whether the call was successful e.g. [wasSuccessfull, callResult]
+ * 2. The return includes a boolean whether the call was successful e.g. [wasSuccessful, callResult]
  */
-export const multicallv2 = async <T = any>(
-  abi: any[],
-  calls: Call[],
-  options: MulticallOptions = { requireSuccess: true },
-): Promise<MultiCallResponse<T>> => {
-  const { requireSuccess } = options
+export const multicallv2 = async <T = any>(abi: any[], calls: Call[], options?: MulticallOptions): Promise<T> => {
+  const { requireSuccess = true, ...overrides } = options || {}
   const multi = getMulticallContract()
-  const itf = new ethers.utils.Interface(abi)
+  const itf = new Interface(abi)
 
-  const calldata = calls.map((call) => [call.address.toLowerCase(), itf.encodeFunctionData(call.name, call.params)])
-  const returnData = await multi.tryAggregate(requireSuccess, calldata)
+  const calldata = calls.map((call) => ({
+    target: call.address.toLowerCase(),
+    callData: itf.encodeFunctionData(call.name, call.params),
+  }))
+
+  const returnData = await multi.tryAggregate(requireSuccess, calldata, overrides)
   const res = returnData.map((call, i) => {
     const [result, data] = call
     return result ? itf.decodeFunctionResult(calls[i].name, data) : null
   })
 
-  return res
+  return res as any
 }
 
 export default multicall

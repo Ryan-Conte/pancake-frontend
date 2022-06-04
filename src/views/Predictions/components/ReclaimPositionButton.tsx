@@ -1,8 +1,12 @@
-import React, { ReactNode, useState } from 'react'
+import { ReactNode } from 'react'
 import { AutoRenewIcon, Button, ButtonProps } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import { usePredictionsContract } from 'hooks/useContract'
 import useToast from 'hooks/useToast'
+import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import useCatchTxError from 'hooks/useCatchTxError'
+import { ToastDescriptionWithTx } from 'components/Toast'
+import { useConfig } from '../context/ConfigProvider'
 
 interface ReclaimPositionButtonProps extends ButtonProps {
   epoch: number
@@ -11,25 +15,22 @@ interface ReclaimPositionButtonProps extends ButtonProps {
 }
 
 const ReclaimPositionButton: React.FC<ReclaimPositionButtonProps> = ({ epoch, onSuccess, children, ...props }) => {
-  const [isPendingTx, setIsPendingTx] = useState(false)
   const { t } = useTranslation()
-  const predictionsContract = usePredictionsContract()
-  const { toastSuccess, toastError } = useToast()
+  const { address: predictionsAddress } = useConfig()
+  const predictionsContract = usePredictionsContract(predictionsAddress)
+  const { callWithGasPrice } = useCallWithGasPrice()
+  const { toastSuccess } = useToast()
+  const { fetchWithCatchTxError, loading: isPendingTx } = useCatchTxError()
 
   const handleReclaim = async () => {
-    const tx = await predictionsContract.claim(epoch)
-    setIsPendingTx(true)
-
-    const receipt = await tx.wait()
-    if (receipt.status) {
+    const receipt = await fetchWithCatchTxError(() => {
+      return callWithGasPrice(predictionsContract, 'claim', [[epoch]])
+    })
+    if (receipt?.status) {
       if (onSuccess) {
         await onSuccess()
       }
-      setIsPendingTx(false)
-      toastSuccess(t('Position reclaimed!'))
-    } else {
-      setIsPendingTx(false)
-      toastError(t('Error'), t('Please try again. Confirm the transaction and make sure you are paying enough gas!'))
+      toastSuccess(t('Position reclaimed!'), <ToastDescriptionWithTx txHash={receipt.transactionHash} />)
     }
   }
 

@@ -1,16 +1,29 @@
-import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+import type {
+  UnknownAsyncThunkFulfilledAction,
+  UnknownAsyncThunkPendingAction,
+  UnknownAsyncThunkRejectedAction,
+  // eslint-disable-next-line import/no-unresolved
+} from '@reduxjs/toolkit/dist/matchers'
+import { createAsyncThunk, createSlice, isAnyOf } from '@reduxjs/toolkit'
+import stringify from 'fast-json-stable-stringify'
 import farmsConfig from 'config/constants/farms'
-import isArchivedPid from 'utils/farmHelpers'
-import priceHelperLpsConfig from 'config/constants/priceHelperLps'
+import multicall from 'utils/multicall'
+import masterchefABI from 'config/abi/masterchef.json'
+import { getMasterChefAddress } from 'utils/addressHelpers'
+import { getBalanceAmount } from 'utils/formatBalance'
+import { ethersToBigNumber } from 'utils/bigNumber'
+import type { AppState } from 'state'
 import fetchFarms from './fetchFarms'
-import fetchFarmsPrices from './fetchFarmsPrices'
+import getFarmsPrices from './getFarmsPrices'
 import {
   fetchFarmUserEarnings,
   fetchFarmUserAllowances,
   fetchFarmUserTokenBalances,
   fetchFarmUserStakedBalances,
 } from './fetchFarmUser'
-import { FarmsState, Farm } from '../types'
+import { SerializedFarmsState, SerializedFarm } from '../types'
+import { fetchMasterChefFarmPoolLength } from './fetchMasterChefData'
+import { resetUserState } from '../global/actions'
 
 const noAccountFarmConfig = farmsConfig.map((farm) => ({
   ...farm,
@@ -22,28 +35,54 @@ const noAccountFarmConfig = farmsConfig.map((farm) => ({
   },
 }))
 
-const initialState: FarmsState = { data: noAccountFarmConfig, loadArchivedFarmsData: false, userDataLoaded: false }
-
-export const nonArchivedFarms = farmsConfig.filter(({ pid }) => !isArchivedPid(pid))
+const initialState: SerializedFarmsState = {
+  data: noAccountFarmConfig,
+  loadArchivedFarmsData: false,
+  userDataLoaded: false,
+  loadingKeys: {},
+}
 
 // Async thunks
-export const fetchFarmsPublicDataAsync = createAsyncThunk<Farm[], number[]>(
+export const fetchFarmsPublicDataAsync = createAsyncThunk<
+  [SerializedFarm[], number, number],
+  number[],
+  {
+    state: AppState
+  }
+>(
   'farms/fetchFarmsPublicDataAsync',
   async (pids) => {
+    const masterChefAddress = getMasterChefAddress()
+    const calls = [
+      {
+        address: masterChefAddress,
+        name: 'poolLength',
+      },
+      {
+        address: masterChefAddress,
+        name: 'cakePerBlock',
+        params: [true],
+      },
+    ]
+    const [[poolLength], [cakePerBlockRaw]] = await multicall(masterchefABI, calls)
+    const regularCakePerBlock = getBalanceAmount(ethersToBigNumber(cakePerBlockRaw))
     const farmsToFetch = farmsConfig.filter((farmConfig) => pids.includes(farmConfig.pid))
+    const farmsCanFetch = farmsToFetch.filter((f) => poolLength.gt(f.pid))
 
-    // Add price helper farms
-    const farmsWithPriceHelpers = farmsToFetch.concat(priceHelperLpsConfig)
+    const farms = await fetchFarms(farmsCanFetch)
+    const farmsWithPrices = getFarmsPrices(farms)
 
-    const farms = await fetchFarms(farmsWithPriceHelpers)
-    const farmsWithPrices = await fetchFarmsPrices(farms)
-
-    // Filter out price helper LP config farms
-    const farmsWithoutHelperLps = farmsWithPrices.filter((farm: Farm) => {
-      return farm.pid || farm.pid === 0
-    })
-
-    return farmsWithoutHelperLps
+    return [farmsWithPrices, poolLength.toNumber(), regularCakePerBlock.toNumber()]
+  },
+  {
+    condition: (arg, { getState }) => {
+      const { farms } = getState()
+      if (farms.loadingKeys[stringify({ type: fetchFarmsPublicDataAsync.typePrefix, arg })]) {
+        console.debug('farms action is fetching, skipping here')
+        return false
+      }
+      return true
+    },
   },
 )
 
@@ -55,18 +94,28 @@ interface FarmUserDataResponse {
   earnings: string
 }
 
-export const fetchFarmUserDataAsync = createAsyncThunk<FarmUserDataResponse[], { account: string; pids: number[] }>(
+export const fetchFarmUserDataAsync = createAsyncThunk<
+  FarmUserDataResponse[],
+  { account: string; pids: number[] },
+  {
+    state: AppState
+  }
+>(
   'farms/fetchFarmUserDataAsync',
   async ({ account, pids }) => {
+    const poolLength = await fetchMasterChefFarmPoolLength()
     const farmsToFetch = farmsConfig.filter((farmConfig) => pids.includes(farmConfig.pid))
-    const userFarmAllowances = await fetchFarmUserAllowances(account, farmsToFetch)
-    const userFarmTokenBalances = await fetchFarmUserTokenBalances(account, farmsToFetch)
-    const userStakedBalances = await fetchFarmUserStakedBalances(account, farmsToFetch)
-    const userFarmEarnings = await fetchFarmUserEarnings(account, farmsToFetch)
+    const farmsCanFetch = farmsToFetch.filter((f) => poolLength.gt(f.pid))
+    const [userFarmAllowances, userFarmTokenBalances, userStakedBalances, userFarmEarnings] = await Promise.all([
+      fetchFarmUserAllowances(account, farmsCanFetch),
+      fetchFarmUserTokenBalances(account, farmsCanFetch),
+      fetchFarmUserStakedBalances(account, farmsCanFetch),
+      fetchFarmUserEarnings(account, farmsCanFetch),
+    ])
 
     return userFarmAllowances.map((farmAllowance, index) => {
       return {
-        pid: farmsToFetch[index].pid,
+        pid: farmsCanFetch[index].pid,
         allowance: userFarmAllowances[index],
         tokenBalance: userFarmTokenBalances[index],
         stakedBalance: userStakedBalances[index],
@@ -74,24 +123,63 @@ export const fetchFarmUserDataAsync = createAsyncThunk<FarmUserDataResponse[], {
       }
     })
   },
+  {
+    condition: (arg, { getState }) => {
+      const { farms } = getState()
+      if (farms.loadingKeys[stringify({ type: fetchFarmUserDataAsync.typePrefix, arg })]) {
+        console.debug('farms user action is fetching, skipping here')
+        return false
+      }
+      return true
+    },
+  },
 )
+
+type UnknownAsyncThunkFulfilledOrPendingAction =
+  | UnknownAsyncThunkFulfilledAction
+  | UnknownAsyncThunkPendingAction
+  | UnknownAsyncThunkRejectedAction
+
+const serializeLoadingKey = (
+  action: UnknownAsyncThunkFulfilledOrPendingAction,
+  suffix: UnknownAsyncThunkFulfilledOrPendingAction['meta']['requestStatus'],
+) => {
+  const type = action.type.split(`/${suffix}`)[0]
+  return stringify({
+    arg: action.meta.arg,
+    type,
+  })
+}
 
 export const farmsSlice = createSlice({
   name: 'Farms',
   initialState,
-  reducers: {
-    setLoadArchivedFarmsData: (state, action) => {
-      const loadArchivedFarmsData = action.payload
-      state.loadArchivedFarmsData = loadArchivedFarmsData
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
+    builder.addCase(resetUserState, (state) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      state.data = state.data.map((farm) => {
+        return {
+          ...farm,
+          userData: {
+            allowance: '0',
+            tokenBalance: '0',
+            stakedBalance: '0',
+            earnings: '0',
+          },
+        }
+      })
+      state.userDataLoaded = false
+    })
     // Update farms with live data
     builder.addCase(fetchFarmsPublicDataAsync.fulfilled, (state, action) => {
+      const [farmPayload, poolLength, regularCakePerBlock] = action.payload
       state.data = state.data.map((farm) => {
-        const liveFarmData = action.payload.find((farmData) => farmData.pid === farm.pid)
+        const liveFarmData = farmPayload.find((farmData) => farmData.pid === farm.pid)
         return { ...farm, ...liveFarmData }
       })
+      state.poolLength = poolLength
+      state.regularCakePerBlock = regularCakePerBlock
     })
 
     // Update farms with user data
@@ -103,10 +191,23 @@ export const farmsSlice = createSlice({
       })
       state.userDataLoaded = true
     })
+
+    builder.addMatcher(isAnyOf(fetchFarmUserDataAsync.pending, fetchFarmsPublicDataAsync.pending), (state, action) => {
+      state.loadingKeys[serializeLoadingKey(action, 'pending')] = true
+    })
+    builder.addMatcher(
+      isAnyOf(fetchFarmUserDataAsync.fulfilled, fetchFarmsPublicDataAsync.fulfilled),
+      (state, action) => {
+        state.loadingKeys[serializeLoadingKey(action, 'fulfilled')] = false
+      },
+    )
+    builder.addMatcher(
+      isAnyOf(fetchFarmsPublicDataAsync.rejected, fetchFarmUserDataAsync.rejected),
+      (state, action) => {
+        state.loadingKeys[serializeLoadingKey(action, 'rejected')] = false
+      },
+    )
   },
 })
-
-// Actions
-export const { setLoadArchivedFarmsData } = farmsSlice.actions
 
 export default farmsSlice.reducer

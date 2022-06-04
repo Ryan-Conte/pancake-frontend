@@ -1,4 +1,3 @@
-import React from 'react'
 import { useWeb3React } from '@web3-react/core'
 import {
   ArrowForwardIcon,
@@ -11,10 +10,10 @@ import {
   ButtonMenu,
   ButtonMenuItem,
 } from '@pancakeswap/uikit'
-import { useAppDispatch } from 'state'
+import useLocalDispatch from 'contexts/LocalRedux/useLocalDispatch'
 import { HistoryFilter } from 'state/types'
-import { setHistoryFilter, setHistoryPaneState, fetchHistory } from 'state/predictions'
-import { useGetHistoryFilter, useGetIsFetchingHistory } from 'state/hooks'
+import { setHistoryFilter, setHistoryPaneState } from 'state/predictions'
+import { useGetHistoryFilter, useGetIsFetchingHistory } from 'state/predictions/hooks'
 import { useTranslation } from 'contexts/Localization'
 import styled from 'styled-components'
 
@@ -32,6 +31,7 @@ const StyledHeader = styled(Box)`
 `
 
 const ButtonMenuContainer = styled.div`
+  margin-bottom: 16px;
   width: 100%;
   & > div {
     width: 100%;
@@ -41,18 +41,6 @@ const ButtonMenuContainer = styled.div`
     width: 100%;
   }
 `
-
-const getClaimParam = (historyFilter: HistoryFilter) => {
-  switch (historyFilter) {
-    case HistoryFilter.COLLECTED:
-      return true
-    case HistoryFilter.UNCOLLECTED:
-      return false
-    case HistoryFilter.ALL:
-    default:
-      return undefined
-  }
-}
 
 interface HeaderProps {
   activeTab: HistoryTabs
@@ -68,7 +56,7 @@ const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
   const historyFilter = useGetHistoryFilter()
   const isFetchingHistory = useGetIsFetchingHistory()
   const { t } = useTranslation()
-  const dispatch = useAppDispatch()
+  const dispatch = useLocalDispatch()
   const { account } = useWeb3React()
 
   const handleClick = () => {
@@ -77,7 +65,6 @@ const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
 
   const handleChange = (newFilter: HistoryFilter) => async () => {
     if (newFilter !== historyFilter) {
-      await dispatch(fetchHistory({ account, claimed: getClaimParam(newFilter) }))
       dispatch(setHistoryFilter(newFilter))
     }
   }

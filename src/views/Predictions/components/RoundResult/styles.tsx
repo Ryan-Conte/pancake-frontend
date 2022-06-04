@@ -1,10 +1,12 @@
-import React from 'react'
 import styled, { DefaultTheme } from 'styled-components'
-import { Box, Flex, FlexProps, Text } from '@pancakeswap/uikit'
+import { BigNumber } from '@ethersproject/bignumber'
+import { Box, Flex, FlexProps, Skeleton, Text } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import { BetPosition, NodeRound, Round } from 'state/types'
-import { formatUsdv2, formatBnbv2 } from '../../helpers'
+import { useConfig } from 'views/Predictions/context/ConfigProvider'
+import { formatUsdv2, formatBnbv2, getRoundPosition, getPriceDifference } from '../../helpers'
 import { formatBnb, formatUsd } from '../History/helpers'
+import PositionTag from '../PositionTag'
 
 // PrizePoolRow
 interface PrizePoolRowProps extends FlexProps {
@@ -29,11 +31,12 @@ const Row = ({ children, ...props }) => {
 
 export const PrizePoolRow: React.FC<PrizePoolRowProps> = ({ totalAmount, ...props }) => {
   const { t } = useTranslation()
+  const { token } = useConfig()
 
   return (
     <Row {...props}>
       <Text bold>{t('Prize Pool')}:</Text>
-      <Text bold>{`${getPrizePoolAmount(totalAmount)} BNB`}</Text>
+      <Text bold>{`${getPrizePoolAmount(totalAmount)} ${token.symbol}`}</Text>
     </Row>
   )
 }
@@ -48,6 +51,7 @@ interface PayoutRowProps extends FlexProps {
 export const PayoutRow: React.FC<PayoutRowProps> = ({ positionLabel, multiplier, amount, ...props }) => {
   const { t } = useTranslation()
   const formattedMultiplier = `${multiplier.toLocaleString(undefined, { maximumFractionDigits: 2 })}x`
+  const { token } = useConfig()
 
   return (
     <Row height="18px" {...props}>
@@ -59,7 +63,7 @@ export const PayoutRow: React.FC<PayoutRowProps> = ({ positionLabel, multiplier,
           {t('%multiplier% Payout', { multiplier: formattedMultiplier })}
         </Text>
         <Text mx="4px">|</Text>
-        <Text fontSize="12px" lineHeight="18px">{`${formatBnb(amount)} BNB`}</Text>
+        <Text fontSize="12px" lineHeight="18px">{`${formatBnb(amount)} ${token.symbol}`}</Text>
       </Flex>
     </Row>
   )
@@ -103,15 +107,16 @@ const getBackgroundColor = ({
     return theme.colors.secondary
   }
 
-  if (betPosition === BetPosition.BULL) {
-    return theme.colors.success
+  switch (betPosition) {
+    case BetPosition.BULL:
+      return theme.colors.success
+    case BetPosition.BEAR:
+      return theme.colors.failure
+    case BetPosition.HOUSE:
+      return theme.colors.textDisabled
+    default:
+      return theme.colors.cardBorder
   }
-
-  if (betPosition === BetPosition.BEAR) {
-    return theme.colors.failure
-  }
-
-  return theme.colors.cardBorder
 }
 
 const Background = styled(Box)<RoundResultBoxProps>`
@@ -140,6 +145,41 @@ export const RoundResultBox: React.FC<RoundResultBoxProps> = ({
   )
 }
 
+interface RoundPriceProps {
+  lockPrice: BigNumber
+  closePrice: BigNumber
+}
+
+export const RoundPrice: React.FC<RoundPriceProps> = ({ lockPrice, closePrice }) => {
+  const betPosition = getRoundPosition(lockPrice, closePrice)
+  const priceDifference = getPriceDifference(closePrice, lockPrice)
+
+  const getTextColor = () => {
+    switch (betPosition) {
+      case BetPosition.BULL:
+        return 'success'
+      case BetPosition.BEAR:
+        return 'failure'
+      case BetPosition.HOUSE:
+      default:
+        return 'textDisabled'
+    }
+  }
+
+  return (
+    <Flex alignItems="center" justifyContent="space-between" mb="16px">
+      {closePrice ? (
+        <Text color={getTextColor()} bold fontSize="24px">
+          {formatUsdv2(closePrice)}
+        </Text>
+      ) : (
+        <Skeleton height="34px" my="1px" />
+      )}
+      <PositionTag betPosition={betPosition}>{formatUsdv2(priceDifference)}</PositionTag>
+    </Flex>
+  )
+}
+
 /**
  * TODO: Remove
  *
@@ -159,11 +199,12 @@ const getPrizePoolAmountHistory = (totalAmount: PrizePoolHistoryRowProps['totalA
 
 export const PrizePoolHistoryRow: React.FC<PrizePoolHistoryRowProps> = ({ totalAmount, ...props }) => {
   const { t } = useTranslation()
+  const { token } = useConfig()
 
   return (
     <Row {...props}>
       <Text bold>{t('Prize Pool')}:</Text>
-      <Text bold>{`${getPrizePoolAmountHistory(totalAmount)} BNB`}</Text>
+      <Text bold>{`${getPrizePoolAmountHistory(totalAmount)} ${token.symbol}`}</Text>
     </Row>
   )
 }

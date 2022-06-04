@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Currency, Token } from '@pancakeswap/sdk'
 import {
   ModalContainer,
@@ -34,6 +34,12 @@ const StyledModalContainer = styled(ModalContainer)`
 
 const StyledModalBody = styled(ModalBody)`
   padding: 24px;
+  overflow-y: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `
 
 interface CurrencySearchModalProps extends InjectedModalProps {
@@ -54,8 +60,8 @@ export default function CurrencySearchModal({
 
   const handleCurrencySelect = useCallback(
     (currency: Currency) => {
+      onDismiss?.()
       onCurrencySelect(currency)
-      onDismiss()
     },
     [onDismiss, onCurrencySelect],
   )

@@ -1,4 +1,3 @@
-import React from 'react'
 import styled from 'styled-components'
 import { useWeb3React } from '@web3-react/core'
 import {
@@ -11,9 +10,9 @@ import {
   HistoryIcon,
   IconButton,
 } from '@pancakeswap/uikit'
-import { useAppDispatch } from 'state'
+import useLocalDispatch from 'contexts/LocalRedux/useLocalDispatch'
 import { PredictionStatus } from 'state/types'
-import { useGetPredictionsStatus, useIsChartPaneOpen, useIsHistoryPaneOpen } from 'state/hooks'
+import { useGetPredictionsStatus, useIsChartPaneOpen, useIsHistoryPaneOpen } from 'state/predictions/hooks'
 import { setChartPaneState, setHistoryPaneState } from 'state/predictions'
 import useSwiper from '../hooks/useSwiper'
 
@@ -56,7 +55,7 @@ const MobileMenu = () => {
   const isChartOpen = useIsChartPaneOpen()
   const status = useGetPredictionsStatus()
   const activeIndex = getActiveIndex(isHistoryOpen, isChartOpen)
-  const dispatch = useAppDispatch()
+  const dispatch = useLocalDispatch()
   const { account } = useWeb3React()
 
   const handleItemClick = (index: number) => {

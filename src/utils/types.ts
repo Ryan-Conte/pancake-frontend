@@ -1,4 +1,6 @@
-import ethers, { Contract, ContractFunction } from 'ethers'
+import { FarmAuction, Predictions } from 'config/abi/types'
+import { ContractFunction } from '@ethersproject/contracts'
+import { BigNumber } from '@ethersproject/bignumber'
 
 export type MultiCallResponse<T> = T | null
 
@@ -7,37 +9,70 @@ export type PredictionsClaimableResponse = boolean
 
 export interface PredictionsLedgerResponse {
   position: 0 | 1
-  amount: ethers.BigNumber
+  amount: BigNumber
   claimed: boolean
 }
 
-export type PredictionsRefundableResponse = boolean
-
 export interface PredictionsRoundsResponse {
-  epoch: ethers.BigNumber
-  startBlock: ethers.BigNumber
-  lockBlock: ethers.BigNumber
-  endBlock: ethers.BigNumber
-  lockPrice: ethers.BigNumber
-  closePrice: ethers.BigNumber
-  totalAmount: ethers.BigNumber
-  bullAmount: ethers.BigNumber
-  bearAmount: ethers.BigNumber
-  rewardBaseCalAmount: ethers.BigNumber
-  rewardAmount: ethers.BigNumber
+  epoch: BigNumber
+  startTimestamp: BigNumber
+  lockTimestamp: BigNumber
+  closeTimestamp: BigNumber
+  lockPrice: BigNumber
+  closePrice: BigNumber
+  lockOracleId: BigNumber
+  closeOracleId: BigNumber
+  totalAmount: BigNumber
+  bullAmount: BigNumber
+  bearAmount: BigNumber
+  rewardBaseCalAmount: BigNumber
+  rewardAmount: BigNumber
   oracleCalled: boolean
 }
 
-export interface PredictionsContract extends Contract {
-  claimable: ContractFunction<PredictionsClaimableResponse>
+// [rounds, ledgers, count]
+export type PredictionsGetUserRoundsResponse = [BigNumber[], PredictionsLedgerResponse[], BigNumber]
+
+export type PredictionsGetUserRoundsLengthResponse = BigNumber
+
+export interface PredictionsContract extends Omit<Predictions, 'getUserRounds' | 'ledger'> {
+  getUserRounds: ContractFunction<PredictionsGetUserRoundsResponse>
   ledger: ContractFunction<PredictionsLedgerResponse>
-  refundable: ContractFunction<PredictionsRefundableResponse>
-  rounds: ContractFunction<PredictionsRoundsResponse>
 }
 
-// Chainlink Orance
-export type ChainLinkOracleLatestAnswerResponse = ethers.BigNumber
+// Farm Auction
 
-export interface ChainLinkOracleContract extends Contract {
-  latestAnswer: ContractFunction<ChainLinkOracleLatestAnswerResponse>
+// Note: slightly different from AuctionStatus used throughout UI
+export enum FarmAuctionContractStatus {
+  Pending,
+  Open,
+  Close,
+}
+
+export interface AuctionsResponse {
+  status: FarmAuctionContractStatus
+  startBlock: BigNumber
+  endBlock: BigNumber
+  initialBidAmount: BigNumber
+  leaderboard: BigNumber
+  leaderboardThreshold: BigNumber
+}
+
+export interface BidsPerAuction {
+  account: string
+  amount: BigNumber
+}
+
+type GetWhitelistedAddressesResponse = [
+  {
+    account: string
+    lpToken: string
+    token: string
+  }[],
+  BigNumber,
+]
+
+export interface FarmAuctionContract extends Omit<FarmAuction, 'auctions'> {
+  auctions: ContractFunction<AuctionsResponse>
+  getWhitelistedAddresses: ContractFunction<GetWhitelistedAddressesResponse>
 }

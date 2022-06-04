@@ -1,8 +1,8 @@
-import React from 'react'
 import styled from 'styled-components'
 import { Text, Button, Input, InputProps, Flex, Link } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
-import { BigNumber } from 'bignumber.js'
+import { parseUnits } from '@ethersproject/units'
+import { formatBigNumber } from 'utils/formatBalance'
 
 interface ModalInputProps {
   max: string
@@ -40,6 +40,7 @@ const StyledInput = styled(Input)`
   width: 60px;
   margin: 0 8px;
   padding: 0 8px;
+  border: none;
 
   ${({ theme }) => theme.mediaQueries.xs} {
     width: 80px;
@@ -75,11 +76,9 @@ const ModalInput: React.FC<ModalInputProps> = ({
     if (isBalanceZero) {
       return '0'
     }
-    const balanceBigNumber = new BigNumber(balance)
-    if (balanceBigNumber.gt(0) && balanceBigNumber.lt(0.0001)) {
-      return balanceBigNumber.toLocaleString()
-    }
-    return balanceBigNumber.toFixed(3, BigNumber.ROUND_DOWN)
+
+    const balanceUnits = parseUnits(balance, decimals)
+    return formatBigNumber(balanceUnits, decimals, decimals)
   }
 
   return (

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowBackIcon,
+  Card,
   CardBody,
   CardHeader,
   Flex,
@@ -8,47 +9,47 @@ import {
   IconButton,
   Button,
   BinanceIcon,
+  LogoIcon,
   Text,
   BalanceInput,
   Slider,
   Box,
   AutoRenewIcon,
 } from '@pancakeswap/uikit'
-import { ethers } from 'ethers'
-import { parseUnits } from 'ethers/lib/utils'
+import { BigNumber, FixedNumber } from '@ethersproject/bignumber'
+import { Zero } from '@ethersproject/constants'
+import { parseUnits } from '@ethersproject/units'
 import { useWeb3React } from '@web3-react/core'
-import { useGetMinBetAmount } from 'state/hooks'
+import { useGetMinBetAmount } from 'state/predictions/hooks'
 import { useTranslation } from 'contexts/Localization'
 import { usePredictionsContract } from 'hooks/useContract'
 import { useGetBnbBalance } from 'hooks/useTokenBalance'
-import useToast from 'hooks/useToast'
+import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import useCatchTxError from 'hooks/useCatchTxError'
 import { BetPosition } from 'state/types'
 import { formatBigNumber, formatFixedNumber } from 'utils/formatBalance'
-import UnlockButton from 'components/UnlockButton'
+import ConnectWalletButton from 'components/ConnectWalletButton'
+import { useConfig } from 'views/Predictions/context/ConfigProvider'
 import PositionTag from '../PositionTag'
-import useSwiper from '../../hooks/useSwiper'
 import FlexRow from '../FlexRow'
-import Card from './Card'
+
+const LOGOS = {
+  BNB: BinanceIcon,
+  CAKE: LogoIcon,
+}
 
 interface SetPositionCardProps {
   position: BetPosition
   togglePosition: () => void
+  epoch: number
   onBack: () => void
-  onSuccess: (decimalValue: string, hash: string) => Promise<void>
+  onSuccess: (hash: string) => Promise<void>
 }
 
-// /!\ TEMPORARY /!\
-// Set default gasPrice (6 gwei) when calling BetBull/BetBear before new contract is released fixing this 'issue'.
-// TODO: Remove on beta-v2 smart contract release.
-const gasPrice = parseUnits('6', 'gwei')
-const dust = parseUnits('0.01', 18)
+const dust = parseUnits('0.001', 18)
 const percentShortcuts = [10, 25, 50, 75]
 
-const getButtonProps = (
-  value: ethers.BigNumber,
-  bnbBalance: ethers.BigNumber,
-  minBetAmountBalance: ethers.BigNumber,
-) => {
+const getButtonProps = (value: BigNumber, bnbBalance: BigNumber, minBetAmountBalance: BigNumber) => {
   const hasSufficientBalance = () => {
     if (value.gt(0)) {
       return value.lte(bnbBalance)
@@ -69,31 +70,27 @@ const getButtonProps = (
 
 const getValueAsEthersBn = (value: string) => {
   const valueAsFloat = parseFloat(value)
-  return Number.isNaN(valueAsFloat) ? ethers.BigNumber.from(0) : parseUnits(value)
+  return Number.isNaN(valueAsFloat) ? Zero : parseUnits(value)
 }
 
-const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosition, onBack, onSuccess }) => {
+const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosition, epoch, onBack, onSuccess }) => {
   const [value, setValue] = useState('')
-  const [isTxPending, setIsTxPending] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
   const [percent, setPercent] = useState(0)
 
   const { account } = useWeb3React()
-  const { swiper } = useSwiper()
   const { balance: bnbBalance } = useGetBnbBalance()
   const minBetAmount = useGetMinBetAmount()
   const { t } = useTranslation()
-  const { toastError } = useToast()
-  const predictionsContract = usePredictionsContract()
+  const { fetchWithCatchTxError, loading: isTxPending } = useCatchTxError()
+  const { callWithGasPrice } = useCallWithGasPrice()
+  const { address: predictionsAddress, token } = useConfig()
+  const predictionsContract = usePredictionsContract(predictionsAddress)
 
-  // Convert bnb balance to ethers.BigNumber
-  const bnbBalanceAsBn = useMemo(() => {
-    return ethers.BigNumber.from(bnbBalance.toString())
-  }, [bnbBalance])
   const maxBalance = useMemo(() => {
-    return bnbBalanceAsBn.gt(dust) ? bnbBalanceAsBn.sub(dust) : dust
-  }, [bnbBalanceAsBn])
-  const balanceDisplay = formatBigNumber(bnbBalanceAsBn)
+    return bnbBalance.gt(dust) ? bnbBalance.sub(dust) : Zero
+  }, [bnbBalance])
+  const balanceDisplay = formatBigNumber(bnbBalance)
 
   const valueAsBn = getValueAsEthersBn(value)
   const showFieldWarning = account && valueAsBn.gt(0) && errorMessage !== null
@@ -104,9 +101,9 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
     if (inputAsBn.eq(0)) {
       setPercent(0)
     } else {
-      const inputAsFn = ethers.FixedNumber.from(inputAsBn)
-      const maxValueAsFn = ethers.FixedNumber.from(maxBalance)
-      const hundredAsFn = ethers.FixedNumber.from(100)
+      const inputAsFn = FixedNumber.from(inputAsBn)
+      const maxValueAsFn = FixedNumber.from(maxBalance)
+      const hundredAsFn = FixedNumber.from(100)
       const percentage = inputAsFn.divUnsafe(maxValueAsFn).mulUnsafe(hundredAsFn)
       const percentageAsFloat = percentage.toUnsafeFloat()
 
@@ -117,9 +114,9 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
 
   const handlePercentChange = (sliderPercent: number) => {
     if (sliderPercent > 0) {
-      const maxValueAsFn = ethers.FixedNumber.from(maxBalance)
-      const hundredAsFn = ethers.FixedNumber.from(100)
-      const sliderPercentAsFn = ethers.FixedNumber.from(sliderPercent.toFixed(18)).divUnsafe(hundredAsFn)
+      const maxValueAsFn = FixedNumber.from(maxBalance)
+      const hundredAsFn = FixedNumber.from(100)
+      const sliderPercentAsFn = FixedNumber.from(sliderPercent.toFixed(18)).divUnsafe(hundredAsFn)
       const balancePercentage = maxValueAsFn.mulUnsafe(sliderPercentAsFn)
       setValue(formatFixedNumber(balancePercentage))
     } else {
@@ -135,33 +132,16 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
     onBack()
   }
 
-  // Disable the swiper events to avoid conflicts
-  const handleMouseOver = () => {
-    swiper.keyboard.disable()
-    swiper.mousewheel.disable()
-    swiper.detachEvents()
-  }
-
-  const handleMouseOut = () => {
-    swiper.keyboard.enable()
-    swiper.mousewheel.enable()
-    swiper.attachEvents()
-  }
-
   const { key, disabled } = getButtonProps(valueAsBn, maxBalance, minBetAmount)
 
   const handleEnterPosition = async () => {
     const betMethod = position === BetPosition.BULL ? 'betBull' : 'betBear'
 
-    try {
-      const tx = await predictionsContract[betMethod]({ value: valueAsBn.toString(), gasPrice })
-      setIsTxPending(true)
-      const receipt = await tx.wait()
-      onSuccess(valueAsBn.toString(), receipt.transactionHash as string)
-    } catch {
-      toastError(t('Error'), t('Please try again. Confirm the transaction and make sure you are paying enough gas!'))
-    } finally {
-      setIsTxPending(false)
+    const receipt = await fetchWithCatchTxError(() => {
+      return callWithGasPrice(predictionsContract, betMethod, [epoch], { value: valueAsBn.toString() })
+    })
+    if (receipt?.status) {
+      onSuccess(receipt.transactionHash)
     }
   }
 
@@ -171,19 +151,22 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
     const hasSufficientBalance = inputAmount.gt(0) && inputAmount.lte(maxBalance)
 
     if (!hasSufficientBalance) {
-      setErrorMessage({ key: 'Insufficient BNB balance' })
+      setErrorMessage(t('Insufficient %symbol% balance', { symbol: token.symbol }))
     } else if (inputAmount.gt(0) && inputAmount.lt(minBetAmount)) {
-      setErrorMessage({
-        key: 'A minimum amount of %num% %token% is required',
-        data: { num: formatBigNumber(minBetAmount), token: 'BNB' },
-      })
+      setErrorMessage(
+        t('A minimum amount of %num% %token% is required', { num: formatBigNumber(minBetAmount), token: token.symbol }),
+      )
     } else {
       setErrorMessage(null)
     }
-  }, [value, maxBalance, minBetAmount, setErrorMessage])
+  }, [value, maxBalance, minBetAmount, setErrorMessage, t, token.symbol])
+
+  const Logo = useMemo(() => {
+    return LOGOS[token.symbol]
+  }, [token.symbol])
 
   return (
-    <Card onMouseOver={handleMouseOver} onMouseOut={handleMouseOut}>
+    <Card>
       <CardHeader p="16px">
         <Flex alignItems="center">
           <IconButton variant="text" scale="sm" onClick={handleGoBack} mr="8px">
@@ -203,9 +186,9 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
             {t('Commit')}:
           </Text>
           <Flex alignItems="center">
-            <BinanceIcon mr="4px  " />
+            <Logo mr="4px" />
             <Text bold textTransform="uppercase">
-              BNB
+              {token.symbol}
             </Text>
           </Flex>
         </Flex>
@@ -214,10 +197,11 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
           onUserInput={handleInputChange}
           isWarning={showFieldWarning}
           inputProps={{ disabled: !account || isTxPending }}
+          className={!account || isTxPending ? '' : 'swiper-no-swiping'}
         />
         {showFieldWarning && (
           <Text color="failure" fontSize="12px" mt="4px" textAlign="right">
-            {t(errorMessage.key, errorMessage.data)}
+            {errorMessage}
           </Text>
         )}
         <Text textAlign="right" mb="16px" color="textSubtle" fontSize="12px" style={{ height: '18px' }}>
@@ -248,6 +232,7 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
                 variant="tertiary"
                 onClick={handleClick}
                 disabled={!account || isTxPending}
+                className={!account || isTxPending ? '' : 'swiper-no-swiping'}
                 style={{ flex: 1 }}
               >
                 {`${percentShortcut}%`}
@@ -259,6 +244,7 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
             variant="tertiary"
             onClick={() => handlePercentChange(100)}
             disabled={!account || isTxPending}
+            className={!account || isTxPending ? '' : 'swiper-no-swiping'}
           >
             {t('Max')}
           </Button>
@@ -267,7 +253,8 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
           {account ? (
             <Button
               width="100%"
-              disabled={!account || disabled}
+              disabled={disabled}
+              className={disabled ? '' : 'swiper-no-swiping'}
               onClick={handleEnterPosition}
               isLoading={isTxPending}
               endIcon={isTxPending ? <AutoRenewIcon color="currentColor" spin /> : null}
@@ -275,7 +262,7 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
               {t(key)}
             </Button>
           ) : (
-            <UnlockButton width="100%" />
+            <ConnectWalletButton className="swiper-no-swiping" width="100%" />
           )}
         </Box>
         <Text as="p" fontSize="12px" lineHeight={1} color="textSubtle">

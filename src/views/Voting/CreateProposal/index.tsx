@@ -1,4 +1,4 @@
-import React, { ChangeEvent, FormEvent, lazy, useEffect, useState, useMemo } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState, useMemo } from 'react'
 import {
   AutoRenewIcon,
   Box,
@@ -14,36 +14,40 @@ import {
   Text,
   useModal,
 } from '@pancakeswap/uikit'
-import { useHistory } from 'react-router'
 import { useWeb3React } from '@web3-react/core'
 import times from 'lodash/times'
 import isEmpty from 'lodash/isEmpty'
-import { useInitialBlock } from 'state/hooks'
+import { useInitialBlock } from 'state/block/hooks'
 import { SnapshotCommand } from 'state/types'
 import useToast from 'hooks/useToast'
 import useWeb3Provider from 'hooks/useActiveWeb3React'
 import { getBscScanLink } from 'utils'
-import truncateWalletAddress from 'utils/truncateWalletAddress'
+import truncateHash from 'utils/truncateHash'
 import { signMessage } from 'utils/web3React'
 import { useTranslation } from 'contexts/Localization'
 import Container from 'components/Layout/Container'
-import { DatePicker, TimePicker } from 'components/DatePicker'
-import UnlockButton from 'components/UnlockButton'
+import { DatePicker, TimePicker, DatePickerPortal } from 'views/Voting/components/DatePicker'
+import ConnectWalletButton from 'components/ConnectWalletButton'
 import ReactMarkdown from 'components/ReactMarkdown'
-import BreadcrumbLink from '../components/BreadcrumbLink'
-import { sendSnaphotData, Message, generateMetaData, generatePayloadData } from '../helpers'
+import { PageMeta } from 'components/Layout/Page'
+import { useRouter } from 'next/router'
+import Link from 'next/link'
+import dynamic from 'next/dynamic'
+import { sendSnapshotData, Message, generateMetaData, generatePayloadData } from '../helpers'
 import Layout from '../components/Layout'
 import { FormErrors, Label, SecondaryLabel } from './styles'
 import Choices, { Choice, makeChoice, MINIMUM_CHOICES } from './Choices'
 import { combineDateAndTime, getFormErrors } from './helpers'
 import { FormState } from './types'
-import { ADMIN_ADDRESS, VOTE_THRESHOLD } from '../config'
+import { ADMINS, VOTE_THRESHOLD } from '../config'
 import VoteDetailsModal from '../components/VoteDetailsModal'
 
-const EasyMde = lazy(() => import('components/EasyMde'))
+const EasyMde = dynamic(() => import('components/EasyMde'), {
+  ssr: false,
+})
 
 const CreateProposal = () => {
-  const [state, setState] = useState<FormState>({
+  const [state, setState] = useState<FormState>(() => ({
     name: '',
     body: '',
     choices: times(MINIMUM_CHOICES).map(makeChoice),
@@ -52,14 +56,14 @@ const CreateProposal = () => {
     endDate: null,
     endTime: null,
     snapshot: 0,
-  })
+  }))
   const [isLoading, setIsLoading] = useState(false)
   const [fieldsState, setFieldsState] = useState<{ [key: string]: boolean }>({})
   const { t } = useTranslation()
   const { account } = useWeb3React()
   const initialBlock = useInitialBlock()
-  const { push } = useHistory()
-  const { library } = useWeb3Provider()
+  const { push } = useRouter()
+  const { library, connector } = useWeb3Provider()
   const { toastSuccess, toastError } = useToast()
   const [onPresentVoteDetailsModal] = useModal(<VoteDetailsModal block={state.snapshot} />)
   const { name, body, choices, startDate, startTime, endDate, endTime, snapshot } = state
@@ -89,13 +93,13 @@ const CreateProposal = () => {
         },
       })
 
-      const sig = await signMessage(library, account, proposal)
+      const sig = await signMessage(connector, library, account, proposal)
 
       if (sig) {
         const msg: Message = { address: account, msg: proposal, sig }
 
         // Save proposal to snapshot
-        const data = await sendSnaphotData(msg)
+        const data = await sendSnapshotData(msg)
 
         // Redirect user to newly created proposal page
         push(`/voting/proposal/${data.ipfsHash}`)
@@ -105,7 +109,7 @@ const CreateProposal = () => {
         toastError(t('Error'), t('Unable to sign payload'))
       }
     } catch (error) {
-      toastError(t('Error'), error?.message || error?.error)
+      toastError(t('Error'), (error as Error)?.message)
       console.error(error)
       setIsLoading(false)
     }
@@ -141,12 +145,14 @@ const CreateProposal = () => {
     updateValue(key, value)
   }
 
-  const options = useMemo(
-    () => ({
-      hideIcons: account === ADMIN_ADDRESS ? [] : ['guide', 'fullscreen', 'preview', 'side-by-side', 'image'],
-    }),
-    [account],
-  )
+  const options = useMemo(() => {
+    return {
+      hideIcons:
+        account && ADMINS.includes(account.toLowerCase())
+          ? []
+          : ['guide', 'fullscreen', 'preview', 'side-by-side', 'image'],
+    }
+  }, [account])
 
   useEffect(() => {
     if (initialBlock > 0) {
@@ -159,10 +165,11 @@ const CreateProposal = () => {
 
   return (
     <Container py="40px">
+      <PageMeta />
       <Box mb="48px">
         <Breadcrumbs>
-          <BreadcrumbLink to="/">{t('Home')}</BreadcrumbLink>
-          <BreadcrumbLink to="/voting">{t('Voting')}</BreadcrumbLink>
+          <Link href="/">{t('Home')}</Link>
+          <Link href="/voting">{t('Voting')}</Link>
           <Text>{t('Make a Proposal')}</Text>
         </Breadcrumbs>
       </Box>
@@ -259,9 +266,7 @@ const CreateProposal = () => {
                     <Text color="textSubtle" mr="16px">
                       {t('Creator')}
                     </Text>
-                    <LinkExternal href={getBscScanLink(account, 'address')}>
-                      {truncateWalletAddress(account)}
-                    </LinkExternal>
+                    <LinkExternal href={getBscScanLink(account, 'address')}>{truncateHash(account)}</LinkExternal>
                   </Flex>
                 )}
                 <Flex alignItems="center" mb="16px">
@@ -290,13 +295,14 @@ const CreateProposal = () => {
                     </Button>
                   </>
                 ) : (
-                  <UnlockButton width="100%" type="button" />
+                  <ConnectWalletButton width="100%" type="button" />
                 )}
               </CardBody>
             </Card>
           </Box>
         </Layout>
       </form>
+      <DatePickerPortal />
     </Container>
   )
 }

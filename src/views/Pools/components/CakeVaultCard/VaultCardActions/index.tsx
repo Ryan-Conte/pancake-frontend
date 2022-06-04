@@ -1,9 +1,9 @@
 import BigNumber from 'bignumber.js'
-import React from 'react'
+
 import styled from 'styled-components'
 import { Flex, Text, Box } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
-import { Pool } from 'state/types'
+import { DeserializedPool } from 'state/types'
 import { BIG_ZERO } from 'utils/bigNumber'
 import VaultApprovalAction from './VaultApprovalAction'
 import VaultStakeActions from './VaultStakeActions'
@@ -14,10 +14,11 @@ const InlineText = styled(Text)`
 `
 
 const CakeVaultCardActions: React.FC<{
-  pool: Pool
+  pool: DeserializedPool
   accountHasSharesStaked: boolean
   isLoading: boolean
-}> = ({ pool, accountHasSharesStaked, isLoading }) => {
+  performanceFee: number
+}> = ({ pool, accountHasSharesStaked, isLoading, performanceFee }) => {
   const { stakingToken, userData } = pool
   const { t } = useTranslation()
   const stakingTokenBalance = userData?.stakingTokenBalance ? new BigNumber(userData.stakingTokenBalance) : BIG_ZERO
@@ -42,15 +43,15 @@ const CakeVaultCardActions: React.FC<{
             bold
             fontSize="12px"
           >
-            {accountHasSharesStaked ? t('Staked (compounding)') : `${stakingToken.symbol}`}
+            {accountHasSharesStaked ? t('Staked') : `${stakingToken.symbol}`}
           </InlineText>
         </Box>
         {isVaultApproved ? (
           <VaultStakeActions
-            isLoading={isLoading}
             pool={pool}
             stakingTokenBalance={stakingTokenBalance}
             accountHasSharesStaked={accountHasSharesStaked}
+            performanceFee={performanceFee}
           />
         ) : (
           <VaultApprovalAction isLoading={isLoading} setLastUpdated={setLastUpdated} />

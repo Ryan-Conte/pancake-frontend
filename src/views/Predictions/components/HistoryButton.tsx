@@ -1,13 +1,12 @@
-import React from 'react'
 import { useWeb3React } from '@web3-react/core'
 import { AutoRenewIcon, HistoryIcon, IconButton } from '@pancakeswap/uikit'
-import { useAppDispatch } from 'state'
+import useLocalDispatch from 'contexts/LocalRedux/useLocalDispatch'
 import { setHistoryPaneState } from 'state/predictions'
-import { useGetIsFetchingHistory } from 'state/hooks'
+import { useGetIsFetchingHistory } from 'state/predictions/hooks'
 
 const HistoryButton = () => {
   const isFetchingHistory = useGetIsFetchingHistory()
-  const dispatch = useAppDispatch()
+  const dispatch = useLocalDispatch()
   const { account } = useWeb3React()
 
   const handleClick = () => {
@@ -15,7 +14,13 @@ const HistoryButton = () => {
   }
 
   return (
-    <IconButton variant="subtle" ml="8px" onClick={handleClick} isLoading={isFetchingHistory} disabled={!account}>
+    <IconButton
+      id="prediction-history-button"
+      variant="subtle"
+      onClick={handleClick}
+      isLoading={isFetchingHistory}
+      disabled={!account}
+    >
       {isFetchingHistory ? <AutoRenewIcon spin color="white" /> : <HistoryIcon width="24px" color="white" />}
     </IconButton>
   )

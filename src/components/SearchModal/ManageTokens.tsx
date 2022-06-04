@@ -1,4 +1,4 @@
-import React, { useRef, RefObject, useCallback, useState, useMemo } from 'react'
+import { useRef, RefObject, useCallback, useState, useMemo } from 'react'
 import { Token } from '@pancakeswap/sdk'
 import { Text, Button, CloseIcon, IconButton, LinkExternal, Input, Link } from '@pancakeswap/uikit'
 import styled from 'styled-components'
@@ -54,13 +54,13 @@ export default function ManageTokens({
   // if they input an address, use it
   const searchToken = useToken(searchQuery)
 
-  // all tokens for local lisr
+  // all tokens for local list
   const userAddedTokens: Token[] = useUserAddedTokens()
   const removeToken = useRemoveUserAddedToken()
 
   const handleRemoveAll = useCallback(() => {
     if (chainId && userAddedTokens) {
-      userAddedTokens.map((token) => {
+      userAddedTokens.forEach((token) => {
         return removeToken(chainId, token.address)
       })
     }

@@ -1,9 +1,8 @@
-import React from 'react'
 import { Box, Button, Flex, Heading, ProposalIcon } from '@pancakeswap/uikit'
 import styled from 'styled-components'
-import { Link } from 'react-router-dom'
 import { useTranslation } from 'contexts/Localization'
 import Container from 'components/Layout/Container'
+import Link from 'next/link'
 import DesktopImage from './DesktopImage'
 
 const StyledHero = styled(Box)`
@@ -26,13 +25,9 @@ const Hero = () => {
             <Heading as="h3" scale="lg" mb="16px">
               {t('Have your say in the future of the PancakeSwap Ecosystem')}
             </Heading>
-            <Button
-              startIcon={<ProposalIcon color="currentColor" width="24px" />}
-              as={Link}
-              to="/voting/proposal/create"
-            >
-              {t('Make a Proposal')}
-            </Button>
+            <Link href="/voting/proposal/create" passHref prefetch={false}>
+              <Button startIcon={<ProposalIcon color="currentColor" width="24px" />}>{t('Make a Proposal')}</Button>
+            </Link>
           </Box>
           <DesktopImage src="/images/voting/voting-presents.png" width={361} height={214} />
         </Flex>

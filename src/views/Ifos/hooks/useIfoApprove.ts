@@ -1,11 +1,15 @@
 import { useCallback } from 'react'
-import { ethers, Contract } from 'ethers'
+import { MaxUint256 } from '@ethersproject/constants'
+import { Ifo } from 'config/constants/types'
+import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import { useERC20 } from 'hooks/useContract'
 
-const useIfoApprove = (tokenContract: Contract, spenderAddress: string) => {
+const useIfoApprove = (ifo: Ifo, spenderAddress: string) => {
+  const raisingTokenContract = useERC20(ifo.currency.address)
+  const { callWithGasPrice } = useCallWithGasPrice()
   const onApprove = useCallback(async () => {
-    const tx = await tokenContract.approve(spenderAddress, ethers.constants.MaxUint256)
-    await tx.wait()
-  }, [spenderAddress, tokenContract])
+    return callWithGasPrice(raisingTokenContract, 'approve', [spenderAddress, MaxUint256])
+  }, [spenderAddress, raisingTokenContract, callWithGasPrice])
 
   return onApprove
 }

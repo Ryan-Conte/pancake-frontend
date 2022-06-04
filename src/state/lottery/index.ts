@@ -2,9 +2,10 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { LotteryTicket, LotteryStatus } from 'config/constants/types'
 import { LotteryState, LotteryRoundGraphEntity, LotteryUserGraphEntity, LotteryResponse } from 'state/types'
-import { fetchLottery, fetchCurrentLotteryIdAndMaxBuy, fetchTickets } from './helpers'
+import { fetchLottery, fetchCurrentLotteryIdAndMaxBuy } from './helpers'
 import getLotteriesData from './getLotteriesData'
-import getUserLotteryData from './getUserLotteryData'
+import getUserLotteryData, { getGraphLotteryUser } from './getUserLotteryData'
+import { resetUserState } from '../global/actions'
 
 interface PublicLotteryData {
   currentLotteryId: string
@@ -59,15 +60,11 @@ export const fetchUserTicketsAndLotteries = createAsyncThunk<
 >('lottery/fetchUserTicketsAndLotteries', async ({ account, currentLotteryId }) => {
   const userLotteriesRes = await getUserLotteryData(account, currentLotteryId)
   const userParticipationInCurrentRound = userLotteriesRes.rounds?.find((round) => round.lotteryId === currentLotteryId)
+  const userTickets = userParticipationInCurrentRound?.tickets
 
-  const totalTickets = userParticipationInCurrentRound?.totalTickets || '0'
-  // Get user tickets for current round
-  // TODO: This can come from the getUserLotteryData function instead
-  const userTickets = await fetchTickets(account, currentLotteryId, totalTickets)
-
-  // user has not bought tickets for the current lottery
+  // User has not bought tickets for the current lottery, or there has been an error
   if (!userTickets || userTickets.length === 0) {
-    return { userTickets: null, userLotteries: userLotteriesRes }
+    return { userTickets: [], userLotteries: userLotteriesRes }
   }
 
   return { userTickets, userLotteries: userLotteriesRes }
@@ -89,6 +86,14 @@ export const fetchUserLotteries = createAsyncThunk<
   return userLotteries
 })
 
+export const fetchAdditionalUserLotteries = createAsyncThunk<
+  LotteryUserGraphEntity,
+  { account: string; skip?: number }
+>('lottery/fetchAdditionalUserLotteries', async ({ account, skip }) => {
+  const additionalUserLotteries = await getGraphLotteryUser(account, undefined, skip)
+  return additionalUserLotteries
+})
+
 export const setLotteryIsTransitioning = createAsyncThunk<{ isTransitioning: boolean }, { isTransitioning: boolean }>(
   `lottery/setIsTransitioning`,
   async ({ isTransitioning }) => {
@@ -99,12 +104,12 @@ export const setLotteryIsTransitioning = createAsyncThunk<{ isTransitioning: boo
 export const LotterySlice = createSlice({
   name: 'Lottery',
   initialState,
-  reducers: {
-    setLotteryPublicData: (state, action) => {
-      state = action.payload
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
+    builder.addCase(resetUserState, (state) => {
+      state.userLotteryData = { ...initialState.userLotteryData }
+      state.currentRound = { ...state.currentRound, userTickets: { ...initialState.currentRound.userTickets } }
+    })
     builder.addCase(fetchCurrentLottery.fulfilled, (state, action: PayloadAction<LotteryResponse>) => {
       state.currentRound = { ...state.currentRound, ...action.payload }
     })
@@ -115,8 +120,10 @@ export const LotterySlice = createSlice({
     builder.addCase(
       fetchUserTicketsAndLotteries.fulfilled,
       (state, action: PayloadAction<{ userTickets: LotteryTicket[]; userLotteries: LotteryUserGraphEntity }>) => {
-        state.currentRound.userTickets.isLoading = false
-        state.currentRound.userTickets.tickets = action.payload.userTickets
+        state.currentRound = {
+          ...state.currentRound,
+          userTickets: { isLoading: false, tickets: action.payload.userTickets },
+        }
         state.userLotteryData = action.payload.userLotteries
       },
     )
@@ -126,6 +133,10 @@ export const LotterySlice = createSlice({
     builder.addCase(fetchUserLotteries.fulfilled, (state, action: PayloadAction<LotteryUserGraphEntity>) => {
       state.userLotteryData = action.payload
     })
+    builder.addCase(fetchAdditionalUserLotteries.fulfilled, (state, action: PayloadAction<LotteryUserGraphEntity>) => {
+      const mergedRounds = [...state.userLotteryData.rounds, ...action.payload.rounds]
+      state.userLotteryData = { ...state.userLotteryData, rounds: mergedRounds }
+    })
     builder.addCase(
       setLotteryIsTransitioning.fulfilled,
       (state, action: PayloadAction<{ isTransitioning: boolean }>) => {
@@ -134,8 +145,5 @@ export const LotterySlice = createSlice({
     )
   },
 })
-
-// Actions
-export const { setLotteryPublicData } = LotterySlice.actions
 
 export default LotterySlice.reducer

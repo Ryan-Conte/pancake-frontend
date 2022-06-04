@@ -1,19 +1,16 @@
 import fs from 'fs'
+import os from 'os'
 import { request, gql } from 'graphql-request'
 import BigNumber from 'bignumber.js'
-import { ChainId } from '@pancakeswap-libs/sdk'
+import { ChainId } from '@pancakeswap/sdk'
 import chunk from 'lodash/chunk'
 import { sub, getUnixTime } from 'date-fns'
 import farmsConfig from '../src/config/constants/farms'
+import type { BlockResponse } from '../src/components/SubgraphHealthIndicator'
+import { BLOCKS_CLIENT } from '../src/config/constants/endpoints'
+import { infoClient } from '../src/utils/graphql'
 
-const BLOCK_SUBGRAPH_ENDPOINT = 'https://api.thegraph.com/subgraphs/name/pancakeswap/blocks'
-const STREAMING_FAST_ENDPOINT = 'https://bsc.streamingfast.io/subgraphs/name/pancakeswap/exchange-v2'
-
-interface BlockResponse {
-  blocks: {
-    number: string
-  }[]
-}
+const BLOCK_SUBGRAPH_ENDPOINT = BLOCKS_CLIENT
 
 interface SingleFarmResponse {
   id: string
@@ -57,8 +54,7 @@ const getBlockAtTimestamp = async (timestamp: number) => {
 
 const getAprsForFarmGroup = async (addresses: string[], blockWeekAgo: number): Promise<AprMap> => {
   try {
-    const { farmsAtLatestBlock, farmsOneWeekAgo } = await request<FarmsResponse>(
-      STREAMING_FAST_ENDPOINT,
+    const { farmsAtLatestBlock, farmsOneWeekAgo } = await infoClient.request<FarmsResponse>(
       gql`
         query farmsBulk($addresses: [String]!, $blockWeekAgo: Int!) {
           farmsAtLatestBlock: pairs(first: 30, where: { id_in: $addresses }) {
@@ -101,10 +97,7 @@ const getAprsForFarmGroup = async (addresses: string[], blockWeekAgo: number): P
 }
 
 const fetchAndUpdateLPsAPR = async () => {
-  // pids before 250 are inactive farms from v1 and failed v2 migration
-  const lowerCaseAddresses = farmsConfig
-    .filter((farm) => farm.pid > 250)
-    .map((farm) => farm.lpAddresses[ChainId.MAINNET].toLowerCase())
+  const lowerCaseAddresses = farmsConfig.map((farm) => farm.lpAddresses[ChainId.MAINNET].toLowerCase())
   console.info(`Fetching farm data for ${lowerCaseAddresses.length} addresses`)
   // Split it into chunks of 30 addresses to avoid gateway timeout
   const addressesInGroups = chunk(lowerCaseAddresses, 30)
@@ -119,7 +112,7 @@ const fetchAndUpdateLPsAPR = async () => {
     allAprs = { ...allAprs, ...aprs }
   }
 
-  fs.writeFile(`src/config/constants/lpAprs.json`, JSON.stringify(allAprs, null, 2), (err) => {
+  fs.writeFile(`src/config/constants/lpAprs.json`, JSON.stringify(allAprs, null, 2) + os.EOL, (err) => {
     if (err) throw err
     console.info(` ✅ - lpAprs.json has been updated!`)
   })

@@ -1,16 +1,15 @@
-import { useMemo } from 'react'
 import { ChainId, Token } from '@pancakeswap/sdk'
+import { createSelector } from '@reduxjs/toolkit'
+import { CHAIN_ID } from 'config/constants/networks'
 import { useSelector } from 'react-redux'
-import { useWeb3React } from '@web3-react/core'
 import { AppState } from '../../index'
 import { deserializeToken } from './helpers'
 
-export default function useUserAddedTokens(): Token[] {
-  const { chainId } = useWeb3React()
-  const serializedTokensMap = useSelector<AppState, AppState['user']['tokens']>(({ user: { tokens } }) => tokens)
+const selectUserTokens = ({ user: { tokens } }: AppState) => tokens
 
-  return useMemo(() => {
-    if (!chainId) return []
-    return Object.values(serializedTokensMap?.[chainId as ChainId] ?? {}).map(deserializeToken)
-  }, [serializedTokensMap, chainId])
+export const userAddedTokenSelector = createSelector(selectUserTokens, (serializedTokensMap) =>
+  Object.values(serializedTokensMap?.[CHAIN_ID as unknown as ChainId] ?? {}).map(deserializeToken),
+)
+export default function useUserAddedTokens(): Token[] {
+  return useSelector(userAddedTokenSelector)
 }

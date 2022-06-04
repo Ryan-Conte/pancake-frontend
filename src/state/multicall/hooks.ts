@@ -3,8 +3,8 @@ import { BigNumber } from '@ethersproject/bignumber'
 import { Contract } from '@ethersproject/contracts'
 import { useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useWeb3React } from '@web3-react/core'
-import { useBlockNumber } from '../application/hooks'
+import useActiveWeb3React from 'hooks/useActiveWeb3React'
+import { useSWRConfig } from 'swr'
 import { AppDispatch, AppState } from '../index'
 import {
   addMulticallListeners,
@@ -50,7 +50,7 @@ export const NEVER_RELOAD: ListenerOptions = {
 
 // the lowest level call for subscribing to contract data
 function useCallsData(calls: (Call | undefined)[], options?: ListenerOptions): CallResult[] {
-  const { chainId } = useWeb3React()
+  const { chainId } = useActiveWeb3React()
   const callResults = useSelector<AppState, AppState['multicall']['callResults']>(
     (state) => state.multicall.callResults,
   )
@@ -185,11 +185,12 @@ export function useSingleContractMultipleData(
 
   const results = useCallsData(calls, options)
 
-  const latestBlockNumber = useBlockNumber()
+  const { cache } = useSWRConfig()
 
   return useMemo(() => {
-    return results.map((result) => toCallState(result, contract?.interface, fragment, latestBlockNumber))
-  }, [fragment, contract, results, latestBlockNumber])
+    const currentBlockNumber = cache.get('blockNumber')
+    return results.map((result) => toCallState(result, contract?.interface, fragment, currentBlockNumber))
+  }, [fragment, contract, results, cache])
 }
 
 export function useMultipleContractSingleData(
@@ -225,11 +226,12 @@ export function useMultipleContractSingleData(
 
   const results = useCallsData(calls, options)
 
-  const latestBlockNumber = useBlockNumber()
+  const { cache } = useSWRConfig()
 
   return useMemo(() => {
-    return results.map((result) => toCallState(result, contractInterface, fragment, latestBlockNumber))
-  }, [fragment, results, contractInterface, latestBlockNumber])
+    const currentBlockNumber = cache.get('blockNumber')
+    return results.map((result) => toCallState(result, contractInterface, fragment, currentBlockNumber))
+  }, [fragment, results, contractInterface, cache])
 }
 
 export function useSingleCallResult(
@@ -252,9 +254,10 @@ export function useSingleCallResult(
   }, [contract, fragment, inputs])
 
   const result = useCallsData(calls, options)[0]
-  const latestBlockNumber = useBlockNumber()
+  const { cache } = useSWRConfig()
 
   return useMemo(() => {
-    return toCallState(result, contract?.interface, fragment, latestBlockNumber)
-  }, [result, contract, fragment, latestBlockNumber])
+    const currentBlockNumber = cache.get('blockNumber')
+    return toCallState(result, contract?.interface, fragment, currentBlockNumber)
+  }, [cache, result, contract?.interface, fragment])
 }

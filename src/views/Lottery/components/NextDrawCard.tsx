@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import styled from 'styled-components'
 import {
   Card,
@@ -17,7 +17,8 @@ import {
 import { useWeb3React } from '@web3-react/core'
 import { LotteryStatus } from 'config/constants/types'
 import { useTranslation } from 'contexts/Localization'
-import { useLottery, usePriceCakeBusd } from 'state/hooks'
+import { usePriceCakeBusd } from 'state/farms/hooks'
+import { useLottery } from 'state/lottery/hooks'
 import { getBalanceNumber } from 'utils/formatBalance'
 import Balance from 'components/Balance'
 import ViewTicketsModal from './ViewTicketsModal'
@@ -53,7 +54,10 @@ const NextDrawWrapper = styled.div`
 `
 
 const NextDrawCard = () => {
-  const { t } = useTranslation()
+  const {
+    t,
+    currentLanguage: { locale },
+  } = useTranslation()
   const { account } = useWeb3React()
   const { currentLotteryId, isTransitioning, currentRound } = useLottery()
   const { endTime, amountCollectedInCake, userTickets, status } = currentRound
@@ -121,10 +125,16 @@ const NextDrawCard = () => {
 
   const getNextDrawDateTime = () => {
     if (status === LotteryStatus.OPEN) {
-      return `${t('Draw')}: ${endDate.toLocaleString(undefined, dateTimeOptions)}`
+      return `${t('Draw')}: ${endDate.toLocaleString(locale, dateTimeOptions)}`
     }
     return ''
   }
+
+  const ticketRoundText =
+    userTicketCount > 1
+      ? t('You have %amount% tickets this round', { amount: userTicketCount })
+      : t('You have %amount% ticket this round', { amount: userTicketCount })
+  const [youHaveText, ticketsThisRoundText] = ticketRoundText.split(userTicketCount.toString())
 
   return (
     <StyledCard>
@@ -156,20 +166,13 @@ const NextDrawCard = () => {
               >
                 {account && (
                   <Flex justifyContent={['center', null, null, 'flex-start']}>
-                    <Text display="inline">{t('You have')} </Text>
+                    <Text display="inline">{youHaveText} </Text>
                     {!userTickets.isLoading ? (
-                      <Balance
-                        value={userTicketCount}
-                        decimals={0}
-                        unit={` ${t('tickets')}`}
-                        display="inline"
-                        bold
-                        mx="4px"
-                      />
+                      <Balance value={userTicketCount} decimals={0} display="inline" bold mx="4px" />
                     ) : (
                       <Skeleton mx="4px" height={20} width={40} />
                     )}
-                    <Text display="inline"> {t('this round')}</Text>
+                    <Text display="inline"> {ticketsThisRoundText}</Text>
                   </Flex>
                 )}
                 {!userTickets.isLoading && userTicketCount > 0 && (
@@ -194,7 +197,7 @@ const NextDrawCard = () => {
       <CardFooter p="0">
         {isExpanded && (
           <NextDrawWrapper>
-            <RewardBrackets lotteryData={currentRound} />
+            <RewardBrackets lotteryNodeData={currentRound} />
           </NextDrawWrapper>
         )}
         {(status === LotteryStatus.OPEN || status === LotteryStatus.CLOSE) && (

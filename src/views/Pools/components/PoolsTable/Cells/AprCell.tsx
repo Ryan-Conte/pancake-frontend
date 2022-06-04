@@ -1,36 +1,30 @@
-import React from 'react'
-import styled from 'styled-components'
+import { BIG_ZERO } from 'utils/bigNumber'
 import { Text, useMatchBreakpoints } from '@pancakeswap/uikit'
-import { Pool } from 'state/types'
+import BigNumber from 'bignumber.js'
+import { DeserializedPool } from 'state/types'
 import { useTranslation } from 'contexts/Localization'
 import BaseCell, { CellContent } from './BaseCell'
-import Apr from '../Apr'
+import Apr from '../../Apr'
 
 interface AprCellProps {
-  pool: Pool
-  performanceFee: number
+  pool: DeserializedPool
 }
 
-const StyledCell = styled(BaseCell)`
-  flex: 1 0 50px;
-  ${({ theme }) => theme.mediaQueries.md} {
-    flex: 0 0 120px;
-  }
-`
-
-const AprCell: React.FC<AprCellProps> = ({ pool, performanceFee }) => {
+const AprCell: React.FC<AprCellProps> = ({ pool }) => {
   const { t } = useTranslation()
-  const { isXs, isSm } = useMatchBreakpoints()
-  const { isAutoVault } = pool
+  const { isMobile } = useMatchBreakpoints()
+  const { userData } = pool
+  const stakedBalance = userData?.stakedBalance ? new BigNumber(userData.stakedBalance) : BIG_ZERO
+
   return (
-    <StyledCell role="cell">
+    <BaseCell role="cell" flex={['1 0 50px', '1 0 50px', '2 0 100px', '2 0 100px', '1 0 120px']}>
       <CellContent>
         <Text fontSize="12px" color="textSubtle" textAlign="left">
-          {isAutoVault ? t('APY') : t('APR')}
+          {t('APR')}
         </Text>
-        <Apr pool={pool} performanceFee={isAutoVault ? performanceFee : 0} showIcon={!isXs && !isSm} />
+        <Apr pool={pool} stakedBalance={stakedBalance} showIcon={!isMobile} />
       </CellContent>
-    </StyledCell>
+    </BaseCell>
   )
 }
 

@@ -1,13 +1,14 @@
 import { Currency, CurrencyAmount, JSBI, Pair, Percent, TokenAmount } from '@pancakeswap/sdk'
 import { useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useWeb3React } from '@web3-react/core'
+import useActiveWeb3React from 'hooks/useActiveWeb3React'
 import { wrappedCurrency } from 'utils/wrappedCurrency'
 import { usePair } from 'hooks/usePairs'
 import useTotalSupply from 'hooks/useTotalSupply'
 
+import { useTranslation } from 'contexts/Localization'
+import tryParseAmount from 'utils/tryParseAmount'
 import { AppDispatch, AppState } from '../index'
-import { tryParseAmount } from '../swap/hooks'
 import { useTokenBalances } from '../wallet/hooks'
 import { Field, typeInput } from './actions'
 
@@ -28,9 +29,11 @@ export function useDerivedBurnInfo(
   }
   error?: string
 } {
-  const { account, chainId } = useWeb3React()
+  const { account, chainId } = useActiveWeb3React()
 
   const { independentField, typedValue } = useBurnState()
+
+  const { t } = useTranslation()
 
   // pair + totalsupply
   const [, pair] = usePair(currencyA, currencyB)
@@ -117,11 +120,11 @@ export function useDerivedBurnInfo(
 
   let error: string | undefined
   if (!account) {
-    error = 'Connect Wallet'
+    error = t('Connect Wallet')
   }
 
   if (!parsedAmounts[Field.LIQUIDITY] || !parsedAmounts[Field.CURRENCY_A] || !parsedAmounts[Field.CURRENCY_B]) {
-    error = error ?? 'Enter an amount'
+    error = error ?? t('Enter an amount')
   }
 
   return { pair, parsedAmounts, error }

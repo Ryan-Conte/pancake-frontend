@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Box, Modal } from '@pancakeswap/uikit'
 import { useWeb3React } from '@web3-react/core'
 import { useTranslation } from 'contexts/Localization'
@@ -10,7 +10,7 @@ import useTheme from 'hooks/useTheme'
 import { CastVoteModalProps, ConfirmVoteView } from './types'
 import MainView from './MainView'
 import DetailsView from './DetailsView'
-import { generatePayloadData, Message, sendSnaphotData } from '../../helpers'
+import { generatePayloadData, Message, sendSnapshotData } from '../../helpers'
 import useGetVotingPower from '../../hooks/useGetVotingPower'
 
 const CastVoteModal: React.FC<CastVoteModalProps> = ({ onSuccess, proposalId, vote, block, onDismiss }) => {
@@ -20,17 +20,18 @@ const CastVoteModal: React.FC<CastVoteModalProps> = ({ onSuccess, proposalId, vo
   const { account } = useWeb3React()
   const { t } = useTranslation()
   const { toastError } = useToast()
-  const { library } = useWeb3Provider()
+  const { library, connector } = useWeb3Provider()
   const { theme } = useTheme()
   const {
     isLoading,
+    isError,
     total,
     cakeBalance,
     cakeVaultBalance,
     cakePoolBalance,
     poolsBalance,
     cakeBnbLpBalance,
-    verificationHash,
+    ifoPoolBalance,
   } = useGetVotingPower(block, modalIsOpen)
 
   const isStartView = view === ConfirmVoteView.MAIN
@@ -56,27 +57,23 @@ const CastVoteModal: React.FC<CastVoteModalProps> = ({ onSuccess, proposalId, vo
         payload: {
           proposal: proposalId,
           choice: vote.value,
-          metadata: {
-            votingPower: total.toString(),
-            verificationHash,
-          },
         },
       })
 
-      const sig = await signMessage(library, account, voteMsg)
+      const sig = await signMessage(connector, library, account, voteMsg)
       const msg: Message = { address: account, msg: voteMsg, sig }
 
       // Save proposal to snapshot
-      await sendSnaphotData(msg)
-      setIsPending(false)
+      await sendSnapshotData(msg)
 
       await onSuccess()
 
       handleDismiss()
     } catch (error) {
-      setIsPending(false)
-      toastError(t('Error'), error?.message)
+      toastError(t('Error'), (error as Error)?.message ?? t('Error occurred, please try again'))
       console.error(error)
+    } finally {
+      setIsPending(false)
     }
   }
 
@@ -92,6 +89,7 @@ const CastVoteModal: React.FC<CastVoteModalProps> = ({ onSuccess, proposalId, vo
         {view === ConfirmVoteView.MAIN && (
           <MainView
             vote={vote}
+            isError={isError}
             isLoading={isLoading}
             isPending={isPending}
             total={total}
@@ -104,10 +102,12 @@ const CastVoteModal: React.FC<CastVoteModalProps> = ({ onSuccess, proposalId, vo
           <DetailsView
             total={total}
             cakeBalance={cakeBalance}
+            ifoPoolBalance={ifoPoolBalance}
             cakeVaultBalance={cakeVaultBalance}
             cakePoolBalance={cakePoolBalance}
             poolsBalance={poolsBalance}
             cakeBnbLpBalance={cakeBnbLpBalance}
+            block={block}
           />
         )}
       </Box>

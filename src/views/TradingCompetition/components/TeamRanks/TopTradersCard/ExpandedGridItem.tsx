@@ -1,9 +1,20 @@
-import React from 'react'
-import { Text, Flex, Box } from '@pancakeswap/uikit'
+import { Box, Flex, SkeletonV2, Text } from '@pancakeswap/uikit'
+import { useProfileForAddress } from 'state/profile/hooks'
 import styled from 'styled-components'
-import truncateWalletAddress from 'utils/truncateWalletAddress'
-import { LeaderboardDataItem } from '../../../types'
+import truncateHash from 'utils/truncateHash'
 import { localiseTradingVolume } from '../../../helpers'
+import { LeaderboardDataItem } from '../../../types'
+
+const Avatar = styled.img`
+  margin-right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+
+  ${({ theme }) => theme.mediaQueries.md} {
+    margin-right: 12px;
+  }
+`
 
 const Wrapper = styled.div`
   position: relative;
@@ -86,6 +97,7 @@ const GridItem: React.FC<{ traderData?: LeaderboardDataItem; teamImages: React.R
   teamImages,
 }) => {
   const { address, volume, teamId, rank } = traderData
+  const { profile, isFetching } = useProfileForAddress(address)
 
   return (
     <Wrapper>
@@ -93,6 +105,9 @@ const GridItem: React.FC<{ traderData?: LeaderboardDataItem; teamImages: React.R
         <Text fontSize="16px" bold color="secondary">
           #{rank}
         </Text>
+        <SkeletonV2 width="24px" height="24px" ml={['16px', null, '16px']} borderRadius="50%" isDataReady={!isFetching}>
+          <Avatar src={profile?.nft?.image?.thumbnail} />
+        </SkeletonV2>
       </Flex>
       <VolumeAddressWrapper>
         <Flex alignItems="center" justifyContent="flex-start">
@@ -102,7 +117,7 @@ const GridItem: React.FC<{ traderData?: LeaderboardDataItem; teamImages: React.R
         </Flex>
         <Flex alignItems="center" justifyContent="flex-start">
           <Text color="primary" fontSize="12px">
-            {truncateWalletAddress(address)}
+            {truncateHash(address)}
           </Text>
         </Flex>
       </VolumeAddressWrapper>

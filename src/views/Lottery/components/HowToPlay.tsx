@@ -1,6 +1,5 @@
-import React from 'react'
 import styled from 'styled-components'
-import { Box, Flex, Text, Heading, useMatchBreakpoints, Link } from '@pancakeswap/uikit'
+import { Box, Flex, Text, Heading, useMatchBreakpoints, Link, Image } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import useTheme from 'hooks/useTheme'
 import { BallWithNumber, MatchExampleA, MatchExampleB, PoolAllocationChart } from '../svgs'
@@ -74,10 +73,17 @@ const StepCard: React.FC<{ step: Step }> = ({ step }) => {
 }
 
 const BallsContainer = styled(Flex)`
-  gap: 6.5px;
-  padding-left: 7px;
+  padding-left: 28px;
   align-items: center;
   width: 100%;
+  ${({ theme }) => theme.mediaQueries.xs} {
+    gap: 7px;
+    padding-left: 36px;
+  }
+  ${({ theme }) => theme.mediaQueries.lg} {
+    gap: 15px;
+    padding-left: 40px;
+  }
 `
 
 const InlineLink = styled(Link)`
@@ -85,9 +91,9 @@ const InlineLink = styled(Link)`
 `
 
 const ExampleBalls = () => {
-  const { isXs } = useMatchBreakpoints()
-  const ballSize = isXs ? '24px' : '32px'
-  const fontSize = isXs ? '14px' : '16px'
+  const { isDesktop } = useMatchBreakpoints()
+  const ballSize = isDesktop ? '24px' : '32px'
+  const fontSize = isDesktop ? '14px' : '16px'
   return (
     <BallsContainer>
       <BallWithNumber size={ballSize} fontSize={fontSize} color="yellow" number="9" />
@@ -100,11 +106,9 @@ const ExampleBalls = () => {
   )
 }
 
-const MatchExampleContainer = styled.div`
+const MatchExampleContainer = styled(Flex)`
   height: 100%;
-  display: grid;
-  grid-template-columns: 1fr 5fr;
-  grid-template-rows: 46px 64px 64px;
+  flex-direction: column;
 `
 
 const MatchExampleCard = () => {
@@ -113,19 +117,22 @@ const MatchExampleCard = () => {
   const { t } = useTranslation()
   const exampleWidth = isXs ? '210px' : '258px'
   return (
-    <StyledStepCard width={['280px', '330px', '380px']}>
-      <StepCardInner height="220px">
+    <StyledStepCard width={['280px', '330px', '330px']}>
+      <StepCardInner height="210px">
         <MatchExampleContainer>
-          <Box />
           <ExampleBalls />
-          <Text lineHeight="72px" textAlign="right" color="secondary" bold mr="20px">
-            {t('A')}
-          </Text>
-          <MatchExampleA width={exampleWidth} height="46px" isDark={isDark} />
-          <Text lineHeight="72px" textAlign="right" color="secondary" bold mr="20px">
-            {t('B')}
-          </Text>
-          <MatchExampleB width={exampleWidth} height="46px" isDark={isDark} />
+          <Flex>
+            <Text lineHeight="72px" textAlign="right" color="secondary" bold mr="20px">
+              {t('A')}
+            </Text>
+            <MatchExampleA width={exampleWidth} height="46px" isDark={isDark} />
+          </Flex>
+          <Flex>
+            <Text lineHeight="72px" textAlign="right" color="secondary" bold mr="20px">
+              {t('B')}
+            </Text>
+            <MatchExampleB width={exampleWidth} height="46px" isDark={isDark} />
+          </Flex>
         </MatchExampleContainer>
       </StepCardInner>
     </StyledStepCard>
@@ -134,8 +141,9 @@ const MatchExampleCard = () => {
 
 const AllocationGrid = styled.div`
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  grid-auto-rows: 30px;
+  grid-template-columns: 4fr 1fr;
+  grid-auto-rows: max-content;
+  row-gap: 4px;
 `
 
 const AllocationColorCircle = styled.div<{ color: string }>`
@@ -159,7 +167,7 @@ const PoolAllocations = () => {
   const { t } = useTranslation()
   return (
     <StyledStepCard width={['280px', '330px', '380px']}>
-      <StepCardInner height="420px">
+      <StepCardInner height="auto">
         <Flex mb="32px" justifyContent="center">
           <PoolAllocationChart width="100px" height="100px" />
         </Flex>
@@ -167,14 +175,14 @@ const PoolAllocations = () => {
           <Text fontSize="12px" color="secondary" bold textTransform="uppercase">
             {t('Digits matched')}
           </Text>
-          <Text fontSize="12px" color="secondary" bold textTransform="uppercase">
+          <Text fontSize="12px" color="secondary" bold textAlign="right" textTransform="uppercase">
             {t('Prize pool allocation')}
           </Text>
         </Flex>
         <AllocationGrid>
           <AllocationMatch color="#FFE362" text={t('Matches first %digits%', { digits: 1 })} />
           <Text textAlign="right" bold>
-            1%
+            2%
           </Text>
           <AllocationMatch color="#85C54E" text={t('Matches first %digits%', { digits: 2 })} />
           <Text textAlign="right" bold>
@@ -182,7 +190,7 @@ const PoolAllocations = () => {
           </Text>
           <AllocationMatch color="#028E75" text={t('Matches first %digits%', { digits: 3 })} />
           <Text textAlign="right" bold>
-            6%
+            5%
           </Text>
           <AllocationMatch color="#36E8F5" text={t('Matches first %digits%', { digits: 4 })} />
           <Text textAlign="right" bold>
@@ -222,7 +230,7 @@ const HowToPlay: React.FC = () => {
     {
       label: t('Step %number%', { number: 2 }),
       title: t('Wait for the Draw'),
-      subtitle: t('There are two draws every day: one every 12 hours.'),
+      subtitle: t('There is one draw every day alternating between 0 AM UTC and 12 PM UTC.'),
     },
     {
       label: t('Step %number%', { number: 3 }),
@@ -322,7 +330,7 @@ const HowToPlay: React.FC = () => {
             <li>
               <Text display="inline" color="textSubtle">
                 {t(
-                  '10,000 CAKE from the treasury is added to a lottery round every other day. This CAKE is of course also included in rollovers! Read more in our guide to ',
+                  'An average total of 35,000 CAKE from the treasury is added to lottery rounds over the course of a week. This CAKE is of course also included in rollovers! Read more in our guide to ',
                 )}
                 <InlineLink href="https://docs.pancakeswap.finance/tokenomics/cake/cake-tokenomics">
                   {t('CAKE Tokenomics')}
@@ -337,9 +345,7 @@ const HowToPlay: React.FC = () => {
       </GappedFlex>
       <Divider />
       <Flex justifyContent="center" alignItems="center" flexDirection={['column', 'column', 'row']}>
-        <Flex maxWidth="240px" mr="8px" mb="16px">
-          <img src="/images/lottery/tombola.png" alt="tombola bunny" />
-        </Flex>
+        <Image width={240} height={172} src="/images/lottery/tombola.png" alt="tombola bunny" mr="8px" mb="16px" />
         <Flex maxWidth="300px" flexDirection="column">
           <Heading mb="16px" scale="md">
             {t('Still got questions?')}

@@ -1,10 +1,9 @@
-import React from 'react'
 import styled from 'styled-components'
-import { useFarmUser } from 'state/hooks'
+import { useFarmUser } from 'state/farms/hooks'
 import { useTranslation } from 'contexts/Localization'
 import { Text } from '@pancakeswap/uikit'
+import { Token } from '@pancakeswap/sdk'
 import { getBalanceNumber } from 'utils/formatBalance'
-import { Token } from 'config/constants/types'
 import { TokenPairImage } from 'components/TokenImage'
 
 export interface FarmProps {
@@ -26,7 +25,7 @@ const Container = styled.div`
 
 const TokenWrapper = styled.div`
   padding-right: 8px;
-  width: 24px;
+  width: 32px;
 
   ${({ theme }) => theme.mediaQueries.sm} {
     width: 40px;

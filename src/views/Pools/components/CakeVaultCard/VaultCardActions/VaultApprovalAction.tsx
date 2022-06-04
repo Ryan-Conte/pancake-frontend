@@ -1,4 +1,3 @@
-import React from 'react'
 import { Button, AutoRenewIcon, Skeleton } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import { useVaultApprove } from '../../../hooks/useApprove'
@@ -11,7 +10,7 @@ interface ApprovalActionProps {
 const VaultApprovalAction: React.FC<ApprovalActionProps> = ({ isLoading = false, setLastUpdated }) => {
   const { t } = useTranslation()
 
-  const { handleApprove, requestedApproval } = useVaultApprove(setLastUpdated)
+  const { handleApprove, pendingTx } = useVaultApprove(setLastUpdated)
 
   return (
     <>
@@ -19,9 +18,9 @@ const VaultApprovalAction: React.FC<ApprovalActionProps> = ({ isLoading = false,
         <Skeleton width="100%" height="52px" />
       ) : (
         <Button
-          isLoading={requestedApproval}
-          endIcon={requestedApproval ? <AutoRenewIcon spin color="currentColor" /> : null}
-          disabled={requestedApproval}
+          isLoading={pendingTx}
+          endIcon={pendingTx ? <AutoRenewIcon spin color="currentColor" /> : null}
+          disabled={pendingTx}
           onClick={handleApprove}
           width="100%"
         >

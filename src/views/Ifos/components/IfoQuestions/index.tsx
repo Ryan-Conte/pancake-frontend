@@ -1,8 +1,8 @@
-import React from 'react'
+/* eslint-disable react/no-array-index-key */
 import styled from 'styled-components'
-import { Text, Heading, Card, CardHeader, CardBody, Flex } from '@pancakeswap/uikit'
+import { Text, Heading, Card, CardHeader, CardBody, Flex, Image } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
-import FoldableText from 'components/FoldableText'
+import FoldableText from 'components/FoldableSection/FoldableText'
 import config from './config'
 
 const ImageWrapper = styled.div`
@@ -33,7 +33,7 @@ const IfoQuestions = () => {
   return (
     <Flex alignItems={['center', null, null, 'start']} flexDirection={['column', null, null, 'row']}>
       <ImageWrapper>
-        <img src="/images/ifos/ifo-bunny.png" alt="ifo bunny" width="414px" height="500px" />
+        <Image src="/images/ifos/ifo-bunny.png" alt="ifo bunny" width={414} height={500} />
       </ImageWrapper>
       <DetailsWrapper>
         <Card>
@@ -43,17 +43,19 @@ const IfoQuestions = () => {
             </Heading>
           </CardHeader>
           <CardBody>
-            {config.map(({ title, description }, i, { length }) => (
-              <FoldableText key={title} id={title} mb={i + 1 === length ? '' : '24px'} title={t(title)}>
-                {description.map((desc) => {
-                  return (
-                    <Text key={desc} color="textSubtle" as="p">
-                      {t(desc)}
-                    </Text>
-                  )
-                })}
-              </FoldableText>
-            ))}
+            {config.map(({ title, description }, i, { length }) => {
+              return (
+                <FoldableText key={i} mb={i + 1 === length ? '' : '24px'} title={title}>
+                  {description.map((desc, index) => {
+                    return (
+                      <Text key={index} color="textSubtle" as="p">
+                        {desc}
+                      </Text>
+                    )
+                  })}
+                </FoldableText>
+              )
+            })}
           </CardBody>
         </Card>
       </DetailsWrapper>

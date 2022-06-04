@@ -1,16 +1,15 @@
-import React from 'react'
 import styled from 'styled-components'
 import { Flex, Link, Skeleton, Text, TimerIcon } from '@pancakeswap/uikit'
 import { getBscScanLink } from 'utils'
-import { Pool } from 'state/types'
-import { useBlock } from 'state/hooks'
+import { DeserializedPool } from 'state/types'
+import { useCurrentBlock } from 'state/block/hooks'
 import Balance from 'components/Balance'
 import { useTranslation } from 'contexts/Localization'
 import { getPoolBlockInfo } from 'views/Pools/helpers'
 import BaseCell, { CellContent } from './BaseCell'
 
 interface FinishCellProps {
-  pool: Pool
+  pool: DeserializedPool
 }
 
 const StyledCell = styled(BaseCell)`
@@ -19,7 +18,7 @@ const StyledCell = styled(BaseCell)`
 
 const EndsInCell: React.FC<FinishCellProps> = ({ pool }) => {
   const { sousId, totalStaked, startBlock, endBlock, isFinished } = pool
-  const { currentBlock } = useBlock()
+  const currentBlock = useCurrentBlock()
   const { t } = useTranslation()
 
   const { shouldShowBlockCountdown, blocksUntilStart, blocksRemaining, hasPoolStarted, blocksToDisplay } =
@@ -52,7 +51,8 @@ const EndsInCell: React.FC<FinishCellProps> = ({ pool }) => {
   // A bit hacky way to determine if public data is loading relying on totalStaked
   // Opted to go for this since we don't really need a separate publicDataLoaded flag
   // anywhere else
-  const isLoadingPublicData = !totalStaked.gt(0) || !currentBlock || (!blocksRemaining && !blocksUntilStart)
+  const isLoadingBlockData = !currentBlock || (!blocksRemaining && !blocksUntilStart)
+  const isLoadingPublicData = hasPoolStarted ? !totalStaked.gt(0) || isLoadingBlockData : isLoadingBlockData
   const showLoading = isLoadingPublicData && !isCakePool && !isFinished
   return (
     <StyledCell role="cell">

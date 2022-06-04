@@ -6,7 +6,7 @@ const useHarvestFarm = (farmPid: number) => {
   const masterChefContract = useMasterchef()
 
   const handleHarvest = useCallback(async () => {
-    await harvestFarm(masterChefContract, farmPid)
+    return harvestFarm(masterChefContract, farmPid)
   }, [farmPid, masterChefContract])
 
   return { onReward: handleHarvest }

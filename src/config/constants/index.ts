@@ -1,7 +1,11 @@
-import { ChainId, JSBI, Percent, Token, WETH } from '@pancakeswap/sdk'
-import { BUSD, DAI, USDT, BTCB, CAKE, WBNB, UST, ETH, USDC } from './tokens'
+import { ChainId, JSBI, Percent, Token } from '@pancakeswap/sdk'
+import { BigNumber } from '@ethersproject/bignumber'
+import { mainnetTokens, testnetTokens } from './tokens'
 
-export const ROUTER_ADDRESS = '0x10ED43C718714eb63d5aA57B78B54704E256024E'
+export const ROUTER_ADDRESS = {
+  [ChainId.MAINNET]: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+  [ChainId.TESTNET]: '0xD99D1c33F9fC3444f8101754aBC46c52416550D1',
+}
 
 // a list of tokens by chain
 type ChainTokenList = {
@@ -10,8 +14,16 @@ type ChainTokenList = {
 
 // used to construct intermediary pairs for trading
 export const BASES_TO_CHECK_TRADES_AGAINST: ChainTokenList = {
-  [ChainId.MAINNET]: [WETH[ChainId.MAINNET], CAKE[ChainId.MAINNET], BUSD[ChainId.MAINNET], USDT, BTCB, UST, ETH, USDC],
-  [ChainId.TESTNET]: [WETH[ChainId.TESTNET], CAKE[ChainId.TESTNET], BUSD[ChainId.TESTNET]],
+  [ChainId.MAINNET]: [
+    mainnetTokens.wbnb,
+    mainnetTokens.cake,
+    mainnetTokens.busd,
+    mainnetTokens.usdt,
+    mainnetTokens.btcb,
+    mainnetTokens.eth,
+    mainnetTokens.usdc,
+  ],
+  [ChainId.TESTNET]: [testnetTokens.wbnb, testnetTokens.cake, testnetTokens.busd],
 }
 
 /**
@@ -33,21 +45,21 @@ export const CUSTOM_BASES: { [chainId in ChainId]?: { [tokenAddress: string]: To
 
 // used for display in the default list when adding liquidity
 export const SUGGESTED_BASES: ChainTokenList = {
-  [ChainId.MAINNET]: [BUSD[ChainId.MAINNET], CAKE[ChainId.MAINNET], BTCB],
-  [ChainId.TESTNET]: [WETH[ChainId.TESTNET], CAKE[ChainId.TESTNET], BUSD[ChainId.TESTNET]],
+  [ChainId.MAINNET]: [mainnetTokens.busd, mainnetTokens.cake, mainnetTokens.btcb],
+  [ChainId.TESTNET]: [testnetTokens.wbnb, testnetTokens.cake, testnetTokens.busd],
 }
 
 // used to construct the list of all pairs we consider by default in the frontend
 export const BASES_TO_TRACK_LIQUIDITY_FOR: ChainTokenList = {
-  [ChainId.MAINNET]: [WETH[ChainId.MAINNET], DAI, BUSD[ChainId.MAINNET], USDT],
-  [ChainId.TESTNET]: [WETH[ChainId.TESTNET], CAKE[ChainId.TESTNET], BUSD[ChainId.TESTNET]],
+  [ChainId.MAINNET]: [mainnetTokens.wbnb, mainnetTokens.dai, mainnetTokens.busd, mainnetTokens.usdt],
+  [ChainId.TESTNET]: [testnetTokens.wbnb, testnetTokens.cake, testnetTokens.busd],
 }
 
 export const PINNED_PAIRS: { readonly [chainId in ChainId]?: [Token, Token][] } = {
   [ChainId.MAINNET]: [
-    [CAKE[ChainId.MAINNET], WBNB],
-    [BUSD[ChainId.MAINNET], USDT],
-    [DAI, USDT],
+    [mainnetTokens.cake, mainnetTokens.wbnb],
+    [mainnetTokens.busd, mainnetTokens.usdt],
+    [mainnetTokens.dai, mainnetTokens.usdt],
   ],
 }
 
@@ -91,3 +103,26 @@ export const BLOCKED_ADDRESSES: string[] = [
 export { default as farmsConfig } from './farms'
 export { default as poolsConfig } from './pools'
 export { default as ifosConfig } from './ifo'
+
+export const FAST_INTERVAL = 10000
+export const SLOW_INTERVAL = 60000
+
+export const NOT_ON_SALE_SELLER = '0x0000000000000000000000000000000000000000'
+
+// BNB
+export const DEFAULT_INPUT_CURRENCY = 'BNB'
+// CAKE
+export const DEFAULT_OUTPUT_CURRENCY = '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82'
+
+export const FARM_AUCTION_HOSTING_IN_SECONDS = 604800
+
+// Gelato uses this address to define a native currency in all chains
+export const GELATO_NATIVE = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+// Handler string is passed to Gelato to use PCS router
+export const GELATO_HANDLER = 'pancakeswap'
+export const GENERIC_GAS_LIMIT_ORDER_EXECUTION = BigNumber.from(500000)
+
+export const EXCHANGE_DOCS_URLS = 'https://docs.pancakeswap.finance/products/pancakeswap-exchange'
+export const LIMIT_ORDERS_DOCS_URL = 'https://docs.pancakeswap.finance/products/pancakeswap-exchange/limit-orders'
+
+export const GALAXY_NFT_CAMPAIGN_ID = 'GCpp2UUxqQ'

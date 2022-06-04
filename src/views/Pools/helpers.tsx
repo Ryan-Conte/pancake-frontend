@@ -1,6 +1,8 @@
 import BigNumber from 'bignumber.js'
-import { Pool } from 'state/types'
-import { getRoi, tokenEarnedPerThousandDollarsCompounding } from 'utils/compoundApyHelpers'
+import { vaultPoolConfig } from 'config/constants/pools'
+import { DeserializedPool } from 'state/types'
+import { BIG_ZERO } from 'utils/bigNumber'
+import { getApy } from 'utils/compoundApyHelpers'
 import { getBalanceNumber, getFullDisplayBalance, getDecimalAmount } from 'utils/formatBalance'
 
 export const convertSharesToCake = (
@@ -8,9 +10,10 @@ export const convertSharesToCake = (
   cakePerFullShare: BigNumber,
   decimals = 18,
   decimalsToRound = 3,
+  fee?: BigNumber,
 ) => {
   const sharePriceNumber = getBalanceNumber(cakePerFullShare, decimals)
-  const amountInCake = new BigNumber(shares.multipliedBy(sharePriceNumber))
+  const amountInCake = new BigNumber(shares.multipliedBy(sharePriceNumber)).minus(fee || BIG_ZERO)
   const cakeAsNumberBalance = getBalanceNumber(amountInCake, decimals)
   const cakeAsBigNumber = getDecimalAmount(new BigNumber(cakeAsNumberBalance), decimals)
   const cakeAsDisplayBalance = getFullDisplayBalance(amountInCake, decimals, decimalsToRound)
@@ -31,35 +34,21 @@ export const convertCakeToShares = (
   return { sharesAsNumberBalance, sharesAsBigNumber, sharesAsDisplayBalance }
 }
 
-const AUTO_VAULT_COMPOUND_FREQUENCY = 288
-const MANUAL_POOL_COMPOUND_FREQUENCY = 1
+const MANUAL_POOL_AUTO_COMPOUND_FREQUENCY = 0
 
-export const getAprData = (pool: Pool, performanceFee: number) => {
-  const { isAutoVault, earningTokenPrice, apr } = pool
-  // special handling for tokens like tBTC or BIFI where the daily token rewards for $1000 dollars will be less than 0.001 of that token
-  const isHighValueToken = Math.round(earningTokenPrice / 1000) > 0
-  const roundingDecimals = isHighValueToken ? 4 : 2
+export const getAprData = (pool: DeserializedPool, performanceFee: number) => {
+  const { vaultKey, apr } = pool
 
   //   Estimate & manual for now. 288 = once every 5 mins. We can change once we have a better sense of this
-  const compoundFrequency = isAutoVault ? AUTO_VAULT_COMPOUND_FREQUENCY : MANUAL_POOL_COMPOUND_FREQUENCY
+  const autoCompoundFrequency = vaultKey
+    ? vaultPoolConfig[vaultKey].autoCompoundFrequency
+    : MANUAL_POOL_AUTO_COMPOUND_FREQUENCY
 
-  if (isAutoVault) {
-    const oneThousandDollarsWorthOfToken = 1000 / earningTokenPrice
-    const tokenEarnedPerThousand365D = tokenEarnedPerThousandDollarsCompounding({
-      numberOfDays: 365,
-      farmApr: apr,
-      tokenPrice: earningTokenPrice,
-      roundingDecimals,
-      compoundFrequency,
-      performanceFee,
-    })
-    const autoApr = getRoi({
-      amountEarned: tokenEarnedPerThousand365D,
-      amountInvested: oneThousandDollarsWorthOfToken,
-    })
-    return { apr: autoApr, isHighValueToken, roundingDecimals, compoundFrequency }
+  if (vaultKey) {
+    const autoApr = getApy(apr, autoCompoundFrequency, 365, performanceFee) * 100
+    return { apr: autoApr, autoCompoundFrequency }
   }
-  return { apr, isHighValueToken, roundingDecimals, compoundFrequency }
+  return { apr, autoCompoundFrequency }
 }
 
 export const getCakeVaultEarnings = (
@@ -68,11 +57,12 @@ export const getCakeVaultEarnings = (
   userShares: BigNumber,
   pricePerFullShare: BigNumber,
   earningTokenPrice: number,
+  fee?: BigNumber,
 ) => {
   const hasAutoEarnings =
     account && cakeAtLastUserAction && cakeAtLastUserAction.gt(0) && userShares && userShares.gt(0)
   const { cakeAsBigNumber } = convertSharesToCake(userShares, pricePerFullShare)
-  const autoCakeProfit = cakeAsBigNumber.minus(cakeAtLastUserAction)
+  const autoCakeProfit = cakeAsBigNumber.minus(fee || BIG_ZERO).minus(cakeAtLastUserAction)
   const autoCakeToDisplay = autoCakeProfit.gte(0) ? getBalanceNumber(autoCakeProfit, 18) : 0
 
   const autoUsdProfit = autoCakeProfit.times(earningTokenPrice)
@@ -80,7 +70,7 @@ export const getCakeVaultEarnings = (
   return { hasAutoEarnings, autoCakeToDisplay, autoUsdToDisplay }
 }
 
-export const getPoolBlockInfo = (pool: Pool, currentBlock: number) => {
+export const getPoolBlockInfo = (pool: DeserializedPool, currentBlock: number) => {
   const { startBlock, endBlock, isFinished } = pool
   const shouldShowBlockCountdown = Boolean(!isFinished && startBlock && endBlock)
   const blocksUntilStart = Math.max(startBlock - currentBlock, 0)

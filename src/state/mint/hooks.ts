@@ -1,13 +1,14 @@
 import { Currency, CurrencyAmount, ETHER, JSBI, Pair, Percent, Price, TokenAmount } from '@pancakeswap/sdk'
 import { useCallback, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useWeb3React } from '@web3-react/core'
+import useActiveWeb3React from 'hooks/useActiveWeb3React'
 import { PairState, usePair } from 'hooks/usePairs'
 import useTotalSupply from 'hooks/useTotalSupply'
 
+import { useTranslation } from 'contexts/Localization'
 import { wrappedCurrency, wrappedCurrencyAmount } from 'utils/wrappedCurrency'
+import tryParseAmount from 'utils/tryParseAmount'
 import { AppDispatch, AppState } from '../index'
-import { tryParseAmount } from '../swap/hooks'
 import { useCurrencyBalances } from '../wallet/hooks'
 import { Field, typeInput } from './actions'
 
@@ -58,7 +59,9 @@ export function useDerivedMintInfo(
   poolTokenPercentage?: Percent
   error?: string
 } {
-  const { account, chainId } = useWeb3React()
+  const { account, chainId } = useActiveWeb3React()
+
+  const { t } = useTranslation()
 
   const { independentField, typedValue, otherTypedValue } = useMintState()
 
@@ -145,7 +148,12 @@ export function useDerivedMintInfo(
       wrappedCurrencyAmount(currencyBAmount, chainId),
     ]
     if (pair && totalSupply && tokenAmountA && tokenAmountB) {
-      return pair.getLiquidityMinted(totalSupply, tokenAmountA, tokenAmountB)
+      try {
+        return pair.getLiquidityMinted(totalSupply, tokenAmountA, tokenAmountB)
+      } catch (error) {
+        console.error(error)
+        return undefined
+      }
     }
     return undefined
   }, [parsedAmounts, chainId, pair, totalSupply])
@@ -159,25 +167,25 @@ export function useDerivedMintInfo(
 
   let error: string | undefined
   if (!account) {
-    error = 'Connect Wallet'
+    error = t('Connect Wallet')
   }
 
   if (pairState === PairState.INVALID) {
-    error = error ?? 'Invalid pair'
+    error = error ?? t('Invalid pair')
   }
 
   if (!parsedAmounts[Field.CURRENCY_A] || !parsedAmounts[Field.CURRENCY_B]) {
-    error = error ?? 'Enter an amount'
+    error = error ?? t('Enter an amount')
   }
 
   const { [Field.CURRENCY_A]: currencyAAmount, [Field.CURRENCY_B]: currencyBAmount } = parsedAmounts
 
   if (currencyAAmount && currencyBalances?.[Field.CURRENCY_A]?.lessThan(currencyAAmount)) {
-    error = `Insufficient ${currencies[Field.CURRENCY_A]?.symbol} balance`
+    error = t('Insufficient %symbol% balance', { symbol: currencies[Field.CURRENCY_A]?.symbol })
   }
 
   if (currencyBAmount && currencyBalances?.[Field.CURRENCY_B]?.lessThan(currencyBAmount)) {
-    error = `Insufficient ${currencies[Field.CURRENCY_B]?.symbol} balance`
+    error = t('Insufficient %symbol% balance', { symbol: currencies[Field.CURRENCY_B]?.symbol })
   }
 
   return {
