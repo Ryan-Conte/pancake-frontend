@@ -70,12 +70,13 @@ export const useCakeBusdPrice = (): Price | undefined => {
   return cakeBusdPrice
 }
 
-export const useBUSDCurrencyAmount = (currency: Currency, amount: number): number | undefined => {
-  const { chainId } = useActiveWeb3React()
+export const useBUSDCurrencyAmount = (currency?: Currency, amount?: number): number | undefined => {
   const busdPrice = useBUSDPrice(currency)
-  const wrapped = wrappedCurrency(currency, chainId)
+  if (!amount) {
+    return undefined
+  }
   if (busdPrice) {
-    return multiplyPriceByAmount(busdPrice, amount, wrapped.decimals)
+    return multiplyPriceByAmount(busdPrice, amount)
   }
   return undefined
 }

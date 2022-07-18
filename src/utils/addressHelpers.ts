@@ -29,6 +29,9 @@ export const getPancakeBunniesAddress = () => {
 export const getBunnyFactoryAddress = () => {
   return getAddress(addresses.bunnyFactory)
 }
+export const getPredictionsV1Address = () => {
+  return getAddress(addresses.predictionsV1)
+}
 export const getClaimRefundAddress = () => {
   return getAddress(addresses.claimRefund)
 }
@@ -68,9 +71,10 @@ export const getCakeVaultAddress = () => {
   return getAddress(addresses.cakeVault)
 }
 
-export const getChainlinkOracleAddress = () => {
-  return getAddress(addresses.chainlinkOracle)
+export const getCakeFlexibleSideVaultAddress = () => {
+  return getAddress(addresses.cakeFlexibleSideVault)
 }
+
 export const getBunnySpecialCakeVaultAddress = () => {
   return getAddress(addresses.bunnySpecialCakeVault)
 }
@@ -100,4 +104,11 @@ export const getNftSaleAddress = () => {
 }
 export const getPancakeSquadAddress = () => {
   return getAddress(addresses.pancakeSquad)
+}
+
+export const getZapAddress = () => {
+  return getAddress(addresses.zap)
+}
+export const getICakeAddress = () => {
+  return getAddress(addresses.iCake)
 }

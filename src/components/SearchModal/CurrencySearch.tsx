@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { KeyboardEvent, RefObject, useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import { Currency, ETHER, Token } from '@pancakeswap/sdk'
-import { Text, Input, Box } from '@pancakeswap/uikit'
+import { Text, Input, Box, useMatchBreakpointsContext } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import { FixedSizeList } from 'react-window'
 import { useAudioModeManager } from 'state/user/hooks'
@@ -41,6 +41,7 @@ function useSearchInactiveTokenLists(search: string | undefined, minResults = 10
     const exactMatches: WrappedTokenInfo[] = []
     const rest: WrappedTokenInfo[] = []
     const addressSet: { [address: string]: true } = {}
+    const trimmedSearchQuery = search.toLowerCase().trim()
     for (const url of inactiveUrls) {
       const list = lists[url].current
       // eslint-disable-next-line no-continue
@@ -61,7 +62,6 @@ function useSearchInactiveTokenLists(search: string | undefined, minResults = 10
               ?.filter((x): x is TagInfo => Boolean(x)) ?? []
           const wrapped: WrappedTokenInfo = new WrappedTokenInfo(tokenInfo, tags)
           addressSet[wrapped.address] = true
-          const trimmedSearchQuery = search.toLowerCase().trim()
           if (
             tokenInfo.name?.toLowerCase() === trimmedSearchQuery ||
             tokenInfo.symbol?.toLowerCase() === trimmedSearchQuery
@@ -169,7 +169,7 @@ function CurrencySearch({
   const filteredInactiveTokens = useSearchInactiveTokenLists(debouncedQuery)
 
   const hasFilteredInactiveTokens = Boolean(filteredInactiveTokens?.length)
-
+  const { isMobile } = useMatchBreakpointsContext()
   const getCurrencyListRows = useCallback(() => {
     if (searchToken && !searchTokenIsAdded && !hasFilteredInactiveTokens) {
       return (
@@ -182,7 +182,7 @@ function CurrencySearch({
     return Boolean(filteredSortedTokens?.length) || hasFilteredInactiveTokens ? (
       <Box margin="24px -24px">
         <CurrencyList
-          height={390}
+          height={isMobile ? (showCommonBases ? 250 : 350) : 390}
           showBNB={showBNB}
           currencies={filteredSortedTokens}
           inactiveCurrencies={filteredInactiveTokens}
@@ -217,6 +217,8 @@ function CurrencySearch({
     showBNB,
     showImportView,
     t,
+    showCommonBases,
+    isMobile,
   ])
 
   return (

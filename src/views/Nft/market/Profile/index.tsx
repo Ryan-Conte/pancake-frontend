@@ -1,4 +1,4 @@
-import { FC } from 'react'
+import { FC, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { isAddress } from 'utils'
 import { useAchievementsForAddress, useProfileForAddress } from 'state/profile/hooks'
@@ -9,8 +9,8 @@ import styled from 'styled-components'
 import MarketPageHeader from '../components/MarketPageHeader'
 import ProfileHeader from './components/ProfileHeader'
 import NoNftsImage from '../components/Activity/NoNftsImage'
-import useNftsForAddress from '../hooks/useNftsForAddress'
 import TabMenu from './components/TabMenu'
+import { useNftsForAddress } from '../hooks/useNftsForAddress'
 
 const TabMenuWrapper = styled(Box)`
   position: absolute;
@@ -46,6 +46,11 @@ const NftProfile: FC = ({ children }) => {
     isLoading: isNftLoading,
     refresh: refreshUserNfts,
   } = useNftsForAddress(accountAddress, profile, isProfileValidating)
+
+  const onSuccess = useCallback(async () => {
+    await refreshProfile()
+    refreshUserNfts()
+  }, [refreshProfile, refreshUserNfts])
 
   if (invalidAddress) {
     return (
@@ -84,10 +89,7 @@ const NftProfile: FC = ({ children }) => {
           isProfileLoading={isProfileFetching}
           isNftLoading={isNftLoading}
           isAchievementsLoading={isAchievementsFetching}
-          onSuccess={async () => {
-            await refreshProfile()
-            refreshUserNfts()
-          }}
+          onSuccess={onSuccess}
         />
         <TabMenuWrapper>
           <TabMenu />

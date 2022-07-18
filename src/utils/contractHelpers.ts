@@ -34,7 +34,11 @@ import {
   getTradingCompetitionAddressMobox,
   getTradingCompetitionAddressMoD,
   getBunnySpecialXmasAddress,
+  getICakeAddress,
   getGalaxyNFTClaimingAddress,
+  getZapAddress,
+  getCakeFlexibleSideVaultAddress,
+  getPredictionsV1Address,
 } from 'utils/addressHelpers'
 
 // ABI
@@ -62,7 +66,9 @@ import tradingCompetitionMoboxAbi from 'config/abi/tradingCompetitionMobox.json'
 import tradingCompetitionMoDAbi from 'config/abi/tradingCompetitionMoD.json'
 import easterNftAbi from 'config/abi/easterNft.json'
 import cakeVaultV2Abi from 'config/abi/cakeVaultV2.json'
+import cakeFlexibleSideVaultV2Abi from 'config/abi/cakeFlexibleSideVaultV2.json'
 import predictionsAbi from 'config/abi/predictions.json'
+import predictionsV1Abi from 'config/abi/predictionsV1.json'
 import chainlinkOracleAbi from 'config/abi/chainlinkOracle.json'
 import MultiCallAbi from 'config/abi/Multicall.json'
 import bunnySpecialCakeVaultAbi from 'config/abi/bunnySpecialCakeVault.json'
@@ -76,6 +82,10 @@ import nftMarketAbi from 'config/abi/nftMarket.json'
 import nftSaleAbi from 'config/abi/nftSale.json'
 import pancakeSquadAbi from 'config/abi/pancakeSquad.json'
 import erc721CollectionAbi from 'config/abi/erc721collection.json'
+import zapAbi from 'config/abi/zap.json'
+import iCakeAbi from 'config/abi/iCake.json'
+import ifoV3Abi from 'config/abi/ifoV3.json'
+import cakePredictionsAbi from 'config/abi/cakePredictions.json'
 
 // Types
 import type {
@@ -113,8 +123,12 @@ import type {
   Erc721collection,
   PointCenterIfo,
   CakeVaultV2,
+  CakeFlexibleSideVaultV2,
   TradingCompetitionMobox,
+  ICake,
   TradingCompetitionMoD,
+  Zap,
+  PredictionsV1,
 } from 'config/abi/types'
 
 export const getContract = (abi: any, address: string, signer?: Signer | Provider) => {
@@ -136,6 +150,9 @@ export const getIfoV1Contract = (address: string, signer?: Signer | Provider) =>
 }
 export const getIfoV2Contract = (address: string, signer?: Signer | Provider) => {
   return getContract(ifoV2Abi, address, signer) as IfoV2
+}
+export const getIfoV3Contract = (address: string, signer?: Signer | Provider) => {
+  return getContract(ifoV3Abi, address, signer)
 }
 export const getSouschefContract = (id: number, signer?: Signer | Provider) => {
   const config = poolsConfig.find((pool) => pool.sousId === id)
@@ -207,8 +224,20 @@ export const getCakeVaultV2Contract = (signer?: Signer | Provider) => {
   return getContract(cakeVaultV2Abi, getCakeVaultAddress(), signer) as CakeVaultV2
 }
 
+export const getCakeFlexibleSideVaultV2Contract = (signer?: Signer | Provider) => {
+  return getContract(cakeFlexibleSideVaultV2Abi, getCakeFlexibleSideVaultAddress(), signer) as CakeFlexibleSideVaultV2
+}
+
 export const getPredictionsContract = (address: string, signer?: Signer | Provider) => {
   return getContract(predictionsAbi, address, signer) as Predictions
+}
+
+export const getPredictionsV1Contract = (signer?: Signer | Provider) => {
+  return getContract(predictionsV1Abi, getPredictionsV1Address(), signer) as PredictionsV1
+}
+
+export const getCakePredictionsContract = (address: string, signer?: Signer | Provider) => {
+  return getContract(cakePredictionsAbi, address, signer) as Predictions
 }
 
 export const getChainlinkOracleContract = (address: string, signer?: Signer | Provider) => {
@@ -250,4 +279,12 @@ export const getPancakeSquadContract = (signer?: Signer | Provider) => {
 }
 export const getErc721CollectionContract = (signer?: Signer | Provider, address?: string) => {
   return getContract(erc721CollectionAbi, address, signer) as Erc721collection
+}
+
+export const getZapContract = (signer?: Signer | Provider) => {
+  return getContract(zapAbi, getZapAddress(), signer) as Zap
+}
+
+export const getIfoCreditAddressContract = (signer?: Signer | Provider) => {
+  return getContract(iCakeAbi, getICakeAddress(), signer) as ICake
 }

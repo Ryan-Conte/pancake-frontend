@@ -1,9 +1,10 @@
-import { ArrowForwardIcon, Button, Text, useMatchBreakpoints, Link } from '@pancakeswap/uikit'
+import { ArrowForwardIcon, Button, Text, Link, useMatchBreakpointsContext } from '@pancakeswap/uikit'
 import { useTranslation } from 'contexts/Localization'
 import Image from 'next/image'
 import { memo, useMemo } from 'react'
-import styled from 'styled-components'
+import styled, { useTheme } from 'styled-components'
 import { perpLangMap } from 'utils/getPerpetualLanguageCode'
+import { perpTheme } from 'utils/getPerpetualTheme'
 import { perpetualImage, perpetualMobileImage } from './images'
 import * as S from './Styled'
 
@@ -33,8 +34,13 @@ const PerpetualBanner = () => {
     t,
     currentLanguage: { code },
   } = useTranslation()
-  const { isDesktop } = useMatchBreakpoints()
-  const perpetualUrl = useMemo(() => `https://perp.pancakeswap.finance/${perpLangMap(code)}/futures/BTCUSDT`, [code])
+  const { isDesktop } = useMatchBreakpointsContext()
+  const { isDark } = useTheme()
+
+  const perpetualUrl = useMemo(
+    () => `https://perp.pancakeswap.finance/${perpLangMap(code)}/futures/BTCUSDT?theme=${perpTheme(isDark)}`,
+    [code, isDark],
+  )
 
   return (
     <S.Wrapper>
