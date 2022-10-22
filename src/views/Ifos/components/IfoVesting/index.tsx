@@ -1,6 +1,6 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import styled from 'styled-components'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import useActiveWeb3React from 'hooks/useActiveWeb3React'
 import Trans from 'components/Trans'
 import { Box, Card, CardBody, CardHeader, Flex, Text, Image } from '@pancakeswap/uikit'
@@ -11,7 +11,7 @@ import TokenInfo from './VestingPeriod/TokenInfo'
 import VestingEnded from './VestingEnded'
 import useFetchVestingData from '../../hooks/vesting/useFetchVestingData'
 
-const StyleVertingCard = styled(Card)`
+const StyleVestingCard = styled(Card)`
   width: 100%;
   max-width: 400px;
   margin: 24px 0 0 0;
@@ -23,9 +23,12 @@ const StyleVertingCard = styled(Card)`
 `
 
 const VestingCardBody = styled(CardBody)`
+  position: relative;
+  z-index: 2;
   overflow-y: auto;
   max-height: 570px;
   padding-bottom: 0;
+  border-radius: 0 0 24px 24px;
 `
 
 const TokenInfoContainer = styled.div`
@@ -60,11 +63,19 @@ interface IfoVestingProps {
   pool: DeserializedPool
 }
 
-const IfoVesting: React.FC<IfoVestingProps> = () => {
+const IfoVesting: React.FC<React.PropsWithChildren<IfoVestingProps>> = () => {
   const { t } = useTranslation()
   const { account } = useActiveWeb3React()
   const [isFirstTime, setIsFirstTime] = useState(true)
   const { data, fetchUserVestingData } = useFetchVestingData()
+
+  useEffect(() => {
+    // When switch account need init
+    if (account) {
+      setIsFirstTime(true)
+      fetchUserVestingData()
+    }
+  }, [account, fetchUserVestingData, setIsFirstTime])
 
   const cardStatus = useMemo(() => {
     if (account) {
@@ -80,7 +91,7 @@ const IfoVesting: React.FC<IfoVestingProps> = () => {
   }, [fetchUserVestingData])
 
   return (
-    <StyleVertingCard isActive>
+    <StyleVestingCard isActive>
       <CardHeader p="16px">
         <Flex justifyContent="space-between" alignItems="center">
           <Box ml="8px">
@@ -112,7 +123,7 @@ const IfoVesting: React.FC<IfoVestingProps> = () => {
         )}
         {cardStatus.status === VestingStatus.ENDED && <VestingEnded />}
       </VestingCardBody>
-    </StyleVertingCard>
+    </StyleVestingCard>
   )
 }
 

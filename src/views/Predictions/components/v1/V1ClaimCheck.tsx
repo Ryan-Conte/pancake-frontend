@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react'
-import { useWeb3React } from '@web3-react/core'
+import { useWeb3React } from '@pancakeswap/wagmi'
 import styled from 'styled-components'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { Box, Flex, Text, ChevronRightIcon, useModal } from '@pancakeswap/uikit'
 import Loading from 'components/Loading'
 import useLocalDispatch from 'contexts/LocalRedux/useLocalDispatch'
-import tokens from 'config/constants/tokens'
+import { bscTokens } from '@pancakeswap/tokens'
 import { Bet } from 'state/types'
 import { transformBetResponse } from 'state/predictions/helpers'
 import { getPredictionsV1Address } from 'utils/addressHelpers'
@@ -34,7 +34,7 @@ const ClaimCheck = () => {
   const [onPresentCollectWinningsModal] = useModal(
     <CollectRoundWinningsModal
       predictionsAddress={predictionsV1Address}
-      token={tokens.bnb}
+      token={bscTokens.bnb}
       dispatch={dispatch}
       history={history}
       isLoadingHistory={isFetching}
@@ -58,7 +58,7 @@ const ClaimCheck = () => {
       })
 
       if (unclaimedBets.length > 0) {
-        const transformer = transformBetResponse(tokens.bnb)
+        const transformer = transformBetResponse(bscTokens.bnb)
         setHistory(unclaimedBets.map(transformer))
         onPresentCollectWinningsModal()
       } else {

@@ -1,8 +1,8 @@
 import { Flex, Heading, Skeleton, Text } from '@pancakeswap/uikit'
 import Balance from 'components/Balance'
 import cakeAbi from 'config/abi/cake.json'
-import tokens from 'config/constants/tokens'
-import { useTranslation } from 'contexts/Localization'
+import { bscTokens } from '@pancakeswap/tokens'
+import { useTranslation } from '@pancakeswap/localization'
 import useIntersectionObserver from 'hooks/useIntersectionObserver'
 import { useEffect, useState } from 'react'
 import { usePriceCakeBusd } from 'state/farms/hooks'
@@ -62,7 +62,7 @@ const Grid = styled.div`
   }
 `
 
-const emissionsPerBlock = 13.75
+const emissionsPerBlock = 11.16
 
 /**
  * User (Planet Finance) built a contract on top of our original manual CAKE pool,
@@ -88,15 +88,19 @@ const CakeDataRow = () => {
   } = useSWR(
     loadData ? ['cakeDataRow'] : null,
     async () => {
-      const totalSupplyCall = { address: tokens.cake.address, name: 'totalSupply' }
+      const totalSupplyCall = { address: bscTokens.cake.address, name: 'totalSupply' }
       const burnedTokenCall = {
-        address: tokens.cake.address,
+        address: bscTokens.cake.address,
         name: 'balanceOf',
         params: ['0x000000000000000000000000000000000000dEaD'],
       }
       const [tokenDataResultRaw, totalLockedAmount] = await Promise.all([
-        multicallv2(cakeAbi, [totalSupplyCall, burnedTokenCall], {
-          requireSuccess: false,
+        multicallv2({
+          abi: cakeAbi,
+          calls: [totalSupplyCall, burnedTokenCall],
+          options: {
+            requireSuccess: false,
+          },
         }),
         cakeVault.totalLockedAmount(),
       ])

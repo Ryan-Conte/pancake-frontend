@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BigNumber, BigNumberish } from '@ethersproject/bignumber'
 import { TransactionResponse } from '@ethersproject/providers'
-import { currencyEquals, ETHER, JSBI, TokenAmount, WETH, MINIMUM_LIQUIDITY } from '@pancakeswap/sdk'
+import { JSBI, CurrencyAmount, Token, WNATIVE, MINIMUM_LIQUIDITY, Percent } from '@pancakeswap/sdk'
 import {
   Button,
   Text,
@@ -15,20 +15,20 @@ import {
 } from '@pancakeswap/uikit'
 import { logError } from 'utils/sentry'
 import { useIsTransactionUnsupported, useIsTransactionWarning } from 'hooks/Trades'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import UnsupportedCurrencyFooter from 'components/UnsupportedCurrencyFooter'
+import { useZapContract } from 'hooks/useContract'
 import useActiveWeb3React from 'hooks/useActiveWeb3React'
-import { getZapContract } from 'utils/contractHelpers'
 import { getZapAddress } from 'utils/addressHelpers'
+import { CommitButton } from 'components/CommitButton'
 import { getLPSymbol } from 'utils/getLpSymbol'
 import { useRouter } from 'next/router'
-import { CHAIN_ID } from 'config/constants/networks'
 import { callWithEstimateGas } from 'utils/calls'
+import { SUPPORT_ZAP } from 'config/constants/supportChains'
 import { ContractMethodName } from 'utils/types'
 import { transactionErrorToUserReadableMessage } from 'utils/transactionErrorToUserReadableMessage'
 import { useLPApr } from 'state/swap/hooks'
 import { ROUTER_ADDRESS } from 'config/constants/exchange'
-import { serializeTokens } from 'config/constants/tokens'
 import { LightCard } from '../../components/Card'
 import { AutoColumn, ColumnCenter } from '../../components/Layout/Column'
 import CurrencyInputPanel from '../../components/CurrencyInputPanel'
@@ -38,16 +38,15 @@ import { RowBetween, RowFixed } from '../../components/Layout/Row'
 import ConnectWalletButton from '../../components/ConnectWalletButton'
 
 import { PairState } from '../../hooks/usePairs'
-import { useCurrency } from '../../hooks/Tokens'
 import { ApprovalState, useApproveCallback } from '../../hooks/useApproveCallback'
 import useTransactionDeadline from '../../hooks/useTransactionDeadline'
-import { Field, resetMintState } from '../../state/mint/actions'
+import { Field } from '../../state/mint/actions'
 import { useDerivedMintInfo, useMintActionHandlers, useMintState, useZapIn } from '../../state/mint/hooks'
 
 import { useTransactionAdder } from '../../state/transactions/hooks'
-import { useGasPrice, useIsExpertMode, useUserSlippageTolerance, useZapModeManager } from '../../state/user/hooks'
+import { useIsExpertMode, usePairAdder, useUserSlippageTolerance, useZapModeManager } from '../../state/user/hooks'
 import { calculateGasMargin } from '../../utils'
-import { getRouterContract, calculateSlippageAmount } from '../../utils/exchange'
+import { calculateSlippageAmount, useRouterContract } from '../../utils/exchange'
 import { maxAmountSpend } from '../../utils/maxAmountSpend'
 import { wrappedCurrency } from '../../utils/wrappedCurrency'
 import Dots from '../../components/Loader/Dots'
@@ -59,7 +58,7 @@ import { ChoosePair } from './ChoosePair'
 import { ZapCheckbox } from '../../components/CurrencyInputPanel/ZapCheckbox'
 import { formatAmount } from '../../utils/formatInfoNumbers'
 import { useCurrencySelectRoute } from './useCurrencySelectRoute'
-import { useAppDispatch } from '../../state'
+import { CommonBasesType } from '../../components/SearchModal/types'
 
 enum Steps {
   Choose,
@@ -68,27 +67,19 @@ enum Steps {
 
 const zapAddress = getZapAddress()
 
-export default function AddLiquidity() {
+export default function AddLiquidity({ currencyA, currencyB }) {
   const router = useRouter()
-  const tokens = serializeTokens()
+  const { account, chainId, isWrongNetwork } = useActiveWeb3React()
 
+  const addPair = usePairAdder()
   const [zapMode] = useZapModeManager()
-  const [currencyIdA, currencyIdB] = router.query.currency || [tokens.bnb.symbol, tokens.cake.address]
+  const expertMode = useIsExpertMode()
+
+  const [temporarilyZapMode, setTemporarilyZapMode] = useState(true)
+
   const [steps, setSteps] = useState(Steps.Choose)
 
-  const { account, chainId, library } = useActiveWeb3React()
-  const dispatch = useAppDispatch()
   const { t } = useTranslation()
-  const gasPrice = useGasPrice()
-
-  const currencyA = useCurrency(currencyIdA)
-  const currencyB = useCurrency(currencyIdB)
-
-  useEffect(() => {
-    if (!currencyIdA && !currencyIdB) {
-      dispatch(resetMintState())
-    }
-  }, [dispatch, currencyIdA, currencyIdB])
 
   useEffect(() => {
     if (router.query.step === '1') {
@@ -96,7 +87,7 @@ export default function AddLiquidity() {
     }
   }, [router.query])
 
-  const expertMode = useIsExpertMode()
+  const zapModeStatus = useMemo(() => !!zapMode && temporarilyZapMode, [zapMode, temporarilyZapMode])
 
   // mint state
   const { independentField, typedValue, otherTypedValue } = useMintState()
@@ -147,7 +138,7 @@ export default function AddLiquidity() {
   const [allowedSlippage] = useUserSlippageTolerance() // custom from users
 
   // get the max amounts user can add
-  const maxAmounts: { [field in Field]?: TokenAmount } = [Field.CURRENCY_A, Field.CURRENCY_B].reduce(
+  const maxAmounts: { [field in Field]?: CurrencyAmount<Token> } = [Field.CURRENCY_A, Field.CURRENCY_B].reduce(
     (accumulator, field) => {
       return {
         ...accumulator,
@@ -159,13 +150,14 @@ export default function AddLiquidity() {
 
   const canZap = useMemo(
     () =>
-      !!zapMode &&
+      !!zapModeStatus &&
       !noLiquidity &&
+      SUPPORT_ZAP.includes(chainId) &&
       !(
-        (pair && JSBI.lessThan(pair.reserve0.raw, MINIMUM_LIQUIDITY)) ||
-        (pair && JSBI.lessThan(pair.reserve1.raw, MINIMUM_LIQUIDITY))
+        (pair && JSBI.lessThan(pair.reserve0.quotient, MINIMUM_LIQUIDITY)) ||
+        (pair && JSBI.lessThan(pair.reserve1.quotient, MINIMUM_LIQUIDITY))
       ),
-    [noLiquidity, pair, zapMode],
+    [chainId, noLiquidity, pair, zapModeStatus],
   )
 
   const { handleCurrencyASelect, handleCurrencyBSelect } = useCurrencySelectRoute()
@@ -209,7 +201,7 @@ export default function AddLiquidity() {
     ],
   )
 
-  const atMaxAmounts: { [field in Field]?: TokenAmount } = [Field.CURRENCY_A, Field.CURRENCY_B].reduce(
+  const atMaxAmounts: { [field in Field]?: CurrencyAmount<Token> } = [Field.CURRENCY_A, Field.CURRENCY_B].reduce(
     (accumulator, field) => {
       return {
         ...accumulator,
@@ -222,18 +214,19 @@ export default function AddLiquidity() {
   // check whether the user has approved the router on the tokens
   const [approvalA, approveACallback] = useApproveCallback(
     parsedAmounts[Field.CURRENCY_A],
-    preferZapInstead ? zapAddress : ROUTER_ADDRESS[CHAIN_ID],
+    preferZapInstead ? zapAddress : ROUTER_ADDRESS[chainId],
   )
   const [approvalB, approveBCallback] = useApproveCallback(
     parsedAmounts[Field.CURRENCY_B],
-    preferZapInstead ? zapAddress : ROUTER_ADDRESS[CHAIN_ID],
+    preferZapInstead ? zapAddress : ROUTER_ADDRESS[chainId],
   )
 
   const addTransaction = useTransactionAdder()
 
+  const routerContract = useRouterContract()
+
   async function onAdd() {
-    if (!chainId || !library || !account) return
-    const routerContract = getRouterContract(chainId, library, account)
+    if (!chainId || !account || !routerContract) return
 
     const { [Field.CURRENCY_A]: parsedAmountA, [Field.CURRENCY_B]: parsedAmountB } = mintParsedAmounts
     if (!parsedAmountA || !parsedAmountB || !currencyA || !currencyB || !deadline) {
@@ -249,27 +242,27 @@ export default function AddLiquidity() {
     let method: (...args: any) => Promise<TransactionResponse>
     let args: Array<string | string[] | number>
     let value: BigNumber | null
-    if (currencyA === ETHER || currencyB === ETHER) {
-      const tokenBIsBNB = currencyB === ETHER
+    if (currencyA?.isNative || currencyB?.isNative) {
+      const tokenBIsNative = currencyB?.isNative
       estimate = routerContract.estimateGas.addLiquidityETH
       method = routerContract.addLiquidityETH
       args = [
-        wrappedCurrency(tokenBIsBNB ? currencyA : currencyB, chainId)?.address ?? '', // token
-        (tokenBIsBNB ? parsedAmountA : parsedAmountB).raw.toString(), // token desired
-        amountsMin[tokenBIsBNB ? Field.CURRENCY_A : Field.CURRENCY_B].toString(), // token min
-        amountsMin[tokenBIsBNB ? Field.CURRENCY_B : Field.CURRENCY_A].toString(), // eth min
+        (tokenBIsNative ? currencyA : currencyB)?.wrapped?.address ?? '', // token
+        (tokenBIsNative ? parsedAmountA : parsedAmountB).quotient.toString(), // token desired
+        amountsMin[tokenBIsNative ? Field.CURRENCY_A : Field.CURRENCY_B].toString(), // token min
+        amountsMin[tokenBIsNative ? Field.CURRENCY_B : Field.CURRENCY_A].toString(), // eth min
         account,
         deadline.toHexString(),
       ]
-      value = BigNumber.from((tokenBIsBNB ? parsedAmountB : parsedAmountA).raw.toString())
+      value = BigNumber.from((tokenBIsNative ? parsedAmountB : parsedAmountA).quotient.toString())
     } else {
       estimate = routerContract.estimateGas.addLiquidity
       method = routerContract.addLiquidity
       args = [
-        wrappedCurrency(currencyA, chainId)?.address ?? '',
-        wrappedCurrency(currencyB, chainId)?.address ?? '',
-        parsedAmountA.raw.toString(),
-        parsedAmountB.raw.toString(),
+        currencyA?.wrapped?.address ?? '',
+        currencyB?.wrapped?.address ?? '',
+        parsedAmountA.quotient.toString(),
+        parsedAmountB.quotient.toString(),
         amountsMin[Field.CURRENCY_A].toString(),
         amountsMin[Field.CURRENCY_B].toString(),
         account,
@@ -284,16 +277,25 @@ export default function AddLiquidity() {
         method(...args, {
           ...(value ? { value } : {}),
           gasLimit: calculateGasMargin(estimatedGasLimit),
-          gasPrice,
         }).then((response) => {
           setLiquidityState({ attemptingTxn: false, liquidityErrorMessage: undefined, txHash: response.hash })
 
+          const symbolA = currencies[Field.CURRENCY_A]?.symbol
+          const amountA = parsedAmounts[Field.CURRENCY_A]?.toSignificant(3)
+          const symbolB = currencies[Field.CURRENCY_B]?.symbol
+          const amountB = parsedAmounts[Field.CURRENCY_B]?.toSignificant(3)
           addTransaction(response, {
-            summary: `Add ${parsedAmounts[Field.CURRENCY_A]?.toSignificant(3)} ${
-              currencies[Field.CURRENCY_A]?.symbol
-            } and ${parsedAmounts[Field.CURRENCY_B]?.toSignificant(3)} ${currencies[Field.CURRENCY_B]?.symbol}`,
+            summary: `Add ${amountA} ${symbolA} and ${amountB} ${symbolB}`,
+            translatableSummary: {
+              text: 'Add %amountA% %symbolA% and %amountB% %symbolB%',
+              data: { amountA, symbolA, amountB, symbolB },
+            },
             type: 'add-liquidity',
           })
+
+          if (pair) {
+            addPair(pair)
+          }
         }),
       )
       .catch((err) => {
@@ -336,6 +338,8 @@ export default function AddLiquidity() {
   const addIsUnsupported = useIsTransactionUnsupported(currencies?.CURRENCY_A, currencies?.CURRENCY_B)
   const addIsWarning = useIsTransactionWarning(currencies?.CURRENCY_A, currencies?.CURRENCY_B)
 
+  const zapContract = useZapContract(true)
+
   const [onPresentAddLiquidityModal] = useModal(
     <ConfirmAddLiquidityModal
       title={noLiquidity ? t('You are creating a pool') : t('You will receive')}
@@ -360,78 +364,96 @@ export default function AddLiquidity() {
   )
 
   async function onZapIn() {
-    if (!canZap || !parsedAmounts || !zapIn.zapInEstimated || !library || !chainId) {
+    if (!canZap || !parsedAmounts || !zapIn.zapInEstimated || !chainId || !zapContract) {
       return
     }
-
-    const zapContract = getZapContract(library.getSigner())
 
     let method: ContractMethodName<typeof zapContract>
     let args
     let value: BigNumberish | null
     let summary: string
+    let translatableSummary: { text: string; data?: Record<string, string | number> }
     const minAmountOut = zapIn.zapInEstimated.swapAmountOut.mul(10000 - allowedSlippage).div(10000)
     if (rebalancing) {
       const maxAmountIn = zapIn.zapInEstimated.swapAmountIn.mul(10000 + allowedSlippage).div(10000)
-      summary = `Zap ${parsedAmounts[Field.CURRENCY_A]?.toSignificant(3)} ${
-        currencies[Field.CURRENCY_A]?.symbol
-      } and ${parsedAmounts[Field.CURRENCY_B]?.toSignificant(3)} ${currencies[Field.CURRENCY_B]?.symbol}`
-      if (currencyA === ETHER || currencyB === ETHER) {
-        const tokenBIsBNB = currencyB === ETHER
+      const amountA = parsedAmounts[Field.CURRENCY_A]?.toSignificant(3)
+      const symbolA = currencies[Field.CURRENCY_A]?.symbol
+      const amountB = parsedAmounts[Field.CURRENCY_B]?.toSignificant(3)
+      const symbolB = currencies[Field.CURRENCY_B]?.symbol
+      summary = `Zap ${amountA} ${symbolA} and ${amountB} ${symbolB}`
+      translatableSummary = {
+        text: 'Zap %amountA% %symbolA% and %amountB% %symbolB%',
+        data: { amountA, symbolA, amountB, symbolB },
+      }
+      if (currencyA?.isNative || currencyB?.isNative) {
+        const tokenBIsBNB = currencyB?.isNative
         method = 'zapInBNBRebalancing'
         args = [
           wrappedCurrency(currencies[tokenBIsBNB ? Field.CURRENCY_A : Field.CURRENCY_B], chainId).address, // token1
-          parsedAmounts[tokenBIsBNB ? Field.CURRENCY_A : Field.CURRENCY_B].raw.toString(), // token1AmountIn
+          parsedAmounts[tokenBIsBNB ? Field.CURRENCY_A : Field.CURRENCY_B].quotient.toString(), // token1AmountIn
           pair.liquidityToken.address, // lp
           maxAmountIn, // tokenAmountInMax
           minAmountOut, // tokenAmountOutMin
           zapIn.zapInEstimated.isToken0Sold && !tokenBIsBNB, // isToken0Sold
         ]
-        value = parsedAmounts[tokenBIsBNB ? Field.CURRENCY_B : Field.CURRENCY_A].raw.toString()
+        value = parsedAmounts[tokenBIsBNB ? Field.CURRENCY_B : Field.CURRENCY_A].quotient.toString()
       } else {
         method = 'zapInTokenRebalancing'
         args = [
           wrappedCurrency(currencies[Field.CURRENCY_A], chainId).address, // token0
           wrappedCurrency(currencies[Field.CURRENCY_B], chainId).address, // token1
-          parsedAmounts[Field.CURRENCY_A].raw.toString(), // token0AmountIn
-          parsedAmounts[Field.CURRENCY_B].raw.toString(), // token1AmountIn
+          parsedAmounts[Field.CURRENCY_A].quotient.toString(), // token0AmountIn
+          parsedAmounts[Field.CURRENCY_B].quotient.toString(), // token1AmountIn
           pair.liquidityToken.address, // lp
           maxAmountIn, // tokenAmountInMax
           minAmountOut, // tokenAmountOutMin
           zapIn.zapInEstimated.isToken0Sold, // isToken0Sold
         ]
       }
-    } else if (currencies[zapIn.swapTokenField] === ETHER) {
+    } else if (currencies[zapIn.swapTokenField]?.isNative) {
       method = 'zapInBNB'
       args = [pair.liquidityToken.address, minAmountOut]
-      summary = `Zap in ${parsedAmounts[zapIn.swapTokenField]?.toSignificant(3)} BNB for ${getLPSymbol(
-        pair.token0.symbol,
-        pair.token1.symbol,
-      )}`
-      value = parsedAmounts[zapIn.swapTokenField].raw.toString()
+      const amount = parsedAmounts[zapIn.swapTokenField]?.toSignificant(3)
+      const symbol = getLPSymbol(pair.token0.symbol, pair.token1.symbol, chainId)
+      summary = `Zap in ${amount} BNB for ${symbol}`
+      translatableSummary = {
+        text: 'Zap in %amount% BNB for %symbol%',
+        data: { amount, symbol },
+      }
+      value = parsedAmounts[zapIn.swapTokenField].quotient.toString()
     } else {
       method = 'zapInToken'
       args = [
         wrappedCurrency(currencies[zapIn.swapTokenField], chainId).address,
-        parsedAmounts[zapIn.swapTokenField].raw.toString(),
+        parsedAmounts[zapIn.swapTokenField].quotient.toString(),
         pair.liquidityToken.address,
         minAmountOut,
       ]
-      summary = `Zap in ${parsedAmounts[zapIn.swapTokenField]?.toSignificant(3)} ${
-        currencies[zapIn.swapTokenField].symbol
-      } for ${getLPSymbol(pair.token0.symbol, pair.token1.symbol)}`
+      const amount = parsedAmounts[zapIn.swapTokenField]?.toSignificant(3)
+      const { symbol } = currencies[zapIn.swapTokenField]
+      const lpSymbol = getLPSymbol(pair.token0.symbol, pair.token1.symbol, chainId)
+      summary = `Zap in ${amount} ${symbol} for ${lpSymbol}`
+      translatableSummary = {
+        text: 'Zap in %amount% %symbol% for %lpSymbol%',
+        data: { amount, symbol, lpSymbol },
+      }
     }
 
     setLiquidityState({ attemptingTxn: true, liquidityErrorMessage: undefined, txHash: undefined })
 
-    callWithEstimateGas(zapContract, method, args, value ? { value, gasPrice } : { gasPrice })
+    callWithEstimateGas(zapContract, method, args, value ? { value } : {})
       .then((response) => {
         setLiquidityState({ attemptingTxn: false, liquidityErrorMessage: undefined, txHash: response.hash })
 
         addTransaction(response, {
           summary,
+          translatableSummary,
           type: 'add-liquidity',
         })
+
+        if (pair) {
+          addPair(pair)
+        }
       })
       .catch((err) => {
         if (err && err.code !== 4001) {
@@ -440,7 +462,10 @@ export default function AddLiquidity() {
         }
         setLiquidityState({
           attemptingTxn: false,
-          liquidityErrorMessage: err && err.code !== 4001 ? `Add Liquidity failed: ${err.message}` : undefined,
+          liquidityErrorMessage:
+            err && err.code !== 4001
+              ? t('Add liquidity failed: %message%', { message: transactionErrorToUserReadableMessage(err, t) })
+              : undefined,
           txHash: undefined,
         })
       })
@@ -466,11 +491,19 @@ export default function AddLiquidity() {
       zapSwapOutTokenField={zapIn.swapOutTokenField}
       zapInEstimated={zapIn.zapInEstimated}
       rebalancing={rebalancing}
+      zapMode={zapModeStatus}
+      toggleZapMode={setTemporarilyZapMode}
     />,
     true,
     true,
     'zapInModal',
   )
+
+  const handleEnableZap = () => {
+    if (!zapMode) {
+      setTemporarilyZapMode(!zapMode)
+    }
+  }
 
   let isValid = !error
   let errorText = error
@@ -500,10 +533,8 @@ export default function AddLiquidity() {
 
   const shouldShowApprovalGroup = (showFieldAApproval || showFieldBApproval) && isValid
 
-  const oneCurrencyIsWBNB = Boolean(
-    chainId &&
-      ((currencyA && currencyEquals(currencyA, WETH[chainId])) ||
-        (currencyB && currencyEquals(currencyB, WETH[chainId]))),
+  const oneCurrencyIsWNATIVE = Boolean(
+    chainId && ((currencyA && currencyA.equals(WNATIVE[chainId])) || (currencyB && currencyB.equals(WNATIVE[chainId]))),
   )
 
   const noAnyInputAmount = !parsedAmounts[Field.CURRENCY_A] && !parsedAmounts[Field.CURRENCY_B]
@@ -515,6 +546,7 @@ export default function AddLiquidity() {
     preferZapInstead &&
     !noAnyInputAmount &&
     ((!rebalancing && !(!zapTokenCheckedA && !zapTokenCheckedB)) || (rebalancing && zapIn.priceSeverity > 3))
+
   const showReduceZapTokenButton =
     preferZapInstead && (zapIn.priceSeverity > 3 || zapIn.zapInEstimatedError) && maxAmounts[zapIn.swapTokenField]
 
@@ -525,6 +557,17 @@ export default function AddLiquidity() {
     preferZapInstead &&
     zapIn.isDependentAmountGreaterThanMaxAmount &&
     rebalancing
+
+  const showZapIsAvailable =
+    !zapMode &&
+    !showZapWarning &&
+    !noAnyInputAmount &&
+    (!zapTokenCheckedA || !zapTokenCheckedB) &&
+    !noLiquidity &&
+    !(
+      (pair && JSBI.lessThan(pair.reserve0.quotient, MINIMUM_LIQUIDITY)) ||
+      (pair && JSBI.lessThan(pair.reserve1.quotient, MINIMUM_LIQUIDITY))
+    )
 
   return (
     <Page>
@@ -542,7 +585,7 @@ export default function AddLiquidity() {
             <AppHeader
               title={
                 currencies[Field.CURRENCY_A]?.symbol && currencies[Field.CURRENCY_B]?.symbol
-                  ? `${getLPSymbol(currencies[Field.CURRENCY_A].symbol, currencies[Field.CURRENCY_B].symbol)}`
+                  ? `${getLPSymbol(currencies[Field.CURRENCY_A].symbol, currencies[Field.CURRENCY_B].symbol, chainId)}`
                   : t('Add Liquidity')
               }
               subtitle={t('Receive LP tokens and earn 0.17% trading fees')}
@@ -569,7 +612,7 @@ export default function AddLiquidity() {
                 <CurrencyInputPanel
                   disableCurrencySelect={canZap}
                   showBUSD
-                  onInputBlur={zapIn.onInputBlurOnce}
+                  onInputBlur={canZap ? zapIn.onInputBlurOnce : undefined}
                   error={zapIn.priceSeverity > 3 && zapIn.swapTokenField === Field.CURRENCY_A}
                   disabled={canZap && !zapTokenCheckedA}
                   beforeButton={
@@ -587,20 +630,27 @@ export default function AddLiquidity() {
                   zapStyle={canZap ? 'zap' : 'noZap'}
                   value={formattedAmounts[Field.CURRENCY_A]}
                   onUserInput={onFieldAInput}
+                  onPercentInput={(percent) => {
+                    if (maxAmounts[Field.CURRENCY_A]) {
+                      onFieldAInput(maxAmounts[Field.CURRENCY_A]?.multiply(new Percent(percent, 100)).toExact() ?? '')
+                    }
+                  }}
                   onMax={() => {
                     onFieldAInput(maxAmounts[Field.CURRENCY_A]?.toExact() ?? '')
                   }}
+                  showQuickInputButton
                   showMaxButton={!atMaxAmounts[Field.CURRENCY_A]}
                   currency={currencies[Field.CURRENCY_A]}
                   id="add-liquidity-input-tokena"
                   showCommonBases
+                  commonBasesType={CommonBasesType.LIQUIDITY}
                 />
                 <ColumnCenter>
                   <AddIcon width="16px" />
                 </ColumnCenter>
                 <CurrencyInputPanel
                   showBUSD
-                  onInputBlur={zapIn.onInputBlurOnce}
+                  onInputBlur={canZap ? zapIn.onInputBlurOnce : undefined}
                   disabled={canZap && !zapTokenCheckedB}
                   error={zapIn.priceSeverity > 3 && zapIn.swapTokenField === Field.CURRENCY_B}
                   beforeButton={
@@ -619,19 +669,27 @@ export default function AddLiquidity() {
                   zapStyle={canZap ? 'zap' : 'noZap'}
                   value={formattedAmounts[Field.CURRENCY_B]}
                   onUserInput={onFieldBInput}
+                  onPercentInput={(percent) => {
+                    if (maxAmounts[Field.CURRENCY_B]) {
+                      onFieldBInput(maxAmounts[Field.CURRENCY_B]?.multiply(new Percent(percent, 100)).toExact() ?? '')
+                    }
+                  }}
                   onMax={() => {
                     onFieldBInput(maxAmounts[Field.CURRENCY_B]?.toExact() ?? '')
                   }}
+                  showQuickInputButton
                   showMaxButton={!atMaxAmounts[Field.CURRENCY_B]}
                   currency={currencies[Field.CURRENCY_B]}
                   id="add-liquidity-input-tokenb"
+                  showCommonBases
+                  commonBasesType={CommonBasesType.LIQUIDITY}
                 />
 
                 {showZapWarning && (
                   <Message variant={zapIn.priceSeverity > 3 ? 'danger' : 'warning'}>
                     {zapIn.priceSeverity > 3 ? (
                       <MessageText>
-                        {t('Price Impact Too Hight.')}{' '}
+                        {t('Price Impact Too High.')}{' '}
                         <strong>
                           {t('Reduce amount of %token% to maximum limit', {
                             token: currencies[zapIn.swapTokenField]?.symbol,
@@ -658,6 +716,18 @@ export default function AddLiquidity() {
                       {t('Reduce %token%', { token: currencies[zapIn.swapTokenField]?.symbol })}
                     </Button>
                   </RowFixed>
+                )}
+
+                {showZapIsAvailable && (
+                  <Message variant="warning">
+                    <MessageText>
+                      {t('Zap allows you to add liquidity with only 1 single token. Click')}
+                      <Button p="0 4px" scale="sm" variant="text" height="auto" onClick={handleEnableZap}>
+                        {t('here')}
+                      </Button>
+                      {t('to try.')}
+                    </MessageText>
+                  </Message>
                 )}
 
                 {showRebalancingConvert && (
@@ -748,6 +818,8 @@ export default function AddLiquidity() {
                   </Button>
                 ) : !account ? (
                   <ConnectWalletButton />
+                ) : isWrongNetwork ? (
+                  <CommitButton />
                 ) : (
                   <AutoColumn gap="md">
                     {shouldShowApprovalGroup && (
@@ -780,7 +852,7 @@ export default function AddLiquidity() {
                         )}
                       </RowBetween>
                     )}
-                    <Button
+                    <CommitButton
                       isLoading={preferZapInstead && zapInEstimating}
                       variant={!isValid || zapIn.priceSeverity > 2 ? 'danger' : 'primary'}
                       onClick={() => {
@@ -807,7 +879,7 @@ export default function AddLiquidity() {
                       disabled={buttonDisabled}
                     >
                       {errorText || t('Supply')}
-                    </Button>
+                    </CommitButton>
                   </AutoColumn>
                 )}
               </AutoColumn>
@@ -818,7 +890,7 @@ export default function AddLiquidity() {
       {!(addIsUnsupported || addIsWarning) ? (
         pair && !noLiquidity && pairState !== PairState.INVALID ? (
           <AutoColumn style={{ minWidth: '20rem', width: '100%', maxWidth: '400px', marginTop: '1rem' }}>
-            <MinimalPositionCard showUnwrapped={oneCurrencyIsWBNB} pair={pair} />
+            <MinimalPositionCard showUnwrapped={oneCurrencyIsWNATIVE} pair={pair} />
           </AutoColumn>
         ) : null
       ) : (

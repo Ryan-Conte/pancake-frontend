@@ -1,7 +1,7 @@
 import { toDate, add, differenceInHours } from 'date-fns'
 import { BSC_BLOCK_TIME, DEFAULT_TOKEN_DECIMAL } from 'config'
 import { getBidderInfo } from 'config/constants/farmAuctions'
-import { simpleRpcProvider } from 'utils/providers'
+import { bscRpcProvider } from 'utils/providers'
 import { AuctionsResponse, FarmAuctionContractStatus, BidsPerAuction } from 'utils/types'
 import { Auction, AuctionStatus, Bidder, BidderAuction } from 'config/constants/types'
 import { ethersToBigNumber } from 'utils/bigNumber'
@@ -80,17 +80,17 @@ const getAuctionStatus = (
 }
 
 const getDateForBlock = async (currentBlock: number, block: number) => {
-  const blocksUntilBlock = block - currentBlock
-  const secondsUntilStart = blocksUntilBlock * BSC_BLOCK_TIME
   // if block already happened we can get timestamp via .getBlock(block)
   if (currentBlock > block) {
     try {
-      const { timestamp } = await simpleRpcProvider.getBlock(block)
+      const { timestamp } = await bscRpcProvider.getBlock(block)
       return toDate(timestamp * 1000)
-    } catch {
-      add(new Date(), { seconds: secondsUntilStart })
+    } finally {
+      // Use logic below
     }
   }
+  const blocksUntilBlock = block - currentBlock
+  const secondsUntilStart = blocksUntilBlock * BSC_BLOCK_TIME
   return add(new Date(), { seconds: secondsUntilStart })
 }
 
@@ -110,7 +110,7 @@ export const processAuctionData = async (
   }
 
   // Get all required data and blocks
-  const currentBlock = currentBlockNumber || (await simpleRpcProvider.getBlockNumber())
+  const currentBlock = currentBlockNumber || (await bscRpcProvider.getBlockNumber())
   const [startDate, endDate] = await Promise.all([
     getDateForBlock(currentBlock, processedAuctionData.startBlock),
     getDateForBlock(currentBlock, processedAuctionData.endBlock),

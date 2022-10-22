@@ -1,16 +1,24 @@
-import { useCallback } from 'react'
-import styled from 'styled-components'
-import { AutoRenewIcon, Button, Card, CardBody, Flex, Skeleton, Text, ArrowForwardIcon } from '@pancakeswap/uikit'
-import { NextLinkFromReactRouter } from 'components/NextLink'
+import { useTranslation } from '@pancakeswap/localization'
+import {
+  ArrowForwardIcon,
+  AutoRenewIcon,
+  Button,
+  Card,
+  CardBody,
+  Flex,
+  Skeleton,
+  Text,
+  useToast,
+} from '@pancakeswap/uikit'
 import BigNumber from 'bignumber.js'
-import { useTranslation } from 'contexts/Localization'
-import { usePriceCakeBusd } from 'state/farms/hooks'
-import useToast from 'hooks/useToast'
-import { useMasterchef } from 'hooks/useContract'
-import useCatchTxError from 'hooks/useCatchTxError'
-import { harvestFarm } from 'utils/calls'
 import Balance from 'components/Balance'
+import { NextLinkFromReactRouter } from 'components/NextLink'
 import { ToastDescriptionWithTx } from 'components/Toast'
+import useCatchTxError from 'hooks/useCatchTxError'
+import { useCallback } from 'react'
+import { usePriceCakeBusd } from 'state/farms/hooks'
+import styled from 'styled-components'
+import { harvestFarm } from 'utils/calls'
 import useFarmsWithBalance from 'views/Home/hooks/useFarmsWithBalance'
 import { getEarningsText } from './EarningsText'
 
@@ -25,7 +33,6 @@ const HarvestCard = () => {
   const { fetchWithCatchTxError, loading: pendingTx } = useCatchTxError()
   const { farmsWithStakedBalance, earningsSum: farmEarningsSum } = useFarmsWithBalance()
 
-  const masterChefContract = useMasterchef()
   const cakePriceBusd = usePriceCakeBusd()
   const earningsBusd = new BigNumber(farmEarningsSum).multipliedBy(cakePriceBusd)
   const numTotalToCollect = farmsWithStakedBalance.length
@@ -40,7 +47,7 @@ const HarvestCard = () => {
       const farmWithBalance = farmsWithStakedBalance[i]
       // eslint-disable-next-line no-await-in-loop
       const receipt = await fetchWithCatchTxError(() => {
-        return harvestFarm(masterChefContract, farmWithBalance.pid)
+        return harvestFarm(farmWithBalance.contract, farmWithBalance.pid)
       })
       if (receipt?.status) {
         toastSuccess(
@@ -51,7 +58,7 @@ const HarvestCard = () => {
         )
       }
     }
-  }, [farmsWithStakedBalance, masterChefContract, toastSuccess, t, fetchWithCatchTxError])
+  }, [farmsWithStakedBalance, toastSuccess, t, fetchWithCatchTxError])
 
   return (
     <StyledCard>

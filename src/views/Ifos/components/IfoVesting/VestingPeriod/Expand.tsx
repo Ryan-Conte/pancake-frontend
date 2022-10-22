@@ -1,6 +1,8 @@
 import { useRouter } from 'next/router'
+import { useMemo } from 'react'
+import { ifosConfig } from 'config/constants'
 import styled, { keyframes, css } from 'styled-components'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { Box, Text } from '@pancakeswap/uikit'
 import { VestingData } from 'views/Ifos/hooks/vesting/fetchUserWalletIfoData'
 import { PoolIds } from 'config/constants/types'
@@ -29,6 +31,8 @@ const collapseAnimation = keyframes`
 `
 
 const StyledExpand = styled(Box)<{ expanded: boolean }>`
+  position: relative;
+  z-index: 0;
   opacity: 1;
   animation: ${({ expanded }) =>
     expanded
@@ -50,22 +54,25 @@ interface ExpandProps {
   fetchUserVestingData: () => void
 }
 
-const Expand: React.FC<ExpandProps> = ({ data, expanded, fetchUserVestingData }) => {
+const Expand: React.FC<React.PropsWithChildren<ExpandProps>> = ({ data, expanded, fetchUserVestingData }) => {
   const { t } = useTranslation()
-  const { token } = data.ifo
+  const { id, token } = data.ifo
+  const ifoIsActive = useMemo(() => ifosConfig.find((ifo) => ifo.isActive && ifo.id === id), [id])
   const router = useRouter()
 
   const handleViewIfo = () => {
-    router.push(`/ifo/history#${token.symbol}`)
+    router.push(`/ifo/history#${token.symbol.toLowerCase()}`)
   }
 
   return (
     <StyledExpand expanded={expanded}>
       <Info poolId={PoolIds.poolUnlimited} data={data} fetchUserVestingData={fetchUserVestingData} />
       <Info poolId={PoolIds.poolBasic} data={data} fetchUserVestingData={fetchUserVestingData} />
-      <Text bold color="primary" textAlign="center" style={{ cursor: 'pointer' }} onClick={handleViewIfo}>
-        {t('View IFO')}
-      </Text>
+      {!ifoIsActive && (
+        <Text bold color="primary" textAlign="center" style={{ cursor: 'pointer' }} onClick={handleViewIfo}>
+          {t('View IFO')}
+        </Text>
+      )}
     </StyledExpand>
   )
 }

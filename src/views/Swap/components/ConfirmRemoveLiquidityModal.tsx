@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react'
-import { Currency, CurrencyAmount, Pair, Percent, Token, TokenAmount } from '@pancakeswap/sdk'
+import { Currency, CurrencyAmount, Pair, Percent, Token } from '@pancakeswap/sdk'
 import { AddIcon, Button, InjectedModalProps, Text } from '@pancakeswap/uikit'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import TransactionConfirmationModal, {
   ConfirmationModalContent,
   TransactionErrorContent,
@@ -22,9 +22,9 @@ interface ConfirmRemoveLiquidityModalProps {
   pendingText: string
   parsedAmounts: {
     [Field.LIQUIDITY_PERCENT]: Percent
-    [Field.LIQUIDITY]?: TokenAmount
-    [Field.CURRENCY_A]?: CurrencyAmount
-    [Field.CURRENCY_B]?: CurrencyAmount
+    [Field.LIQUIDITY]?: CurrencyAmount<Token>
+    [Field.CURRENCY_A]?: CurrencyAmount<Currency>
+    [Field.CURRENCY_B]?: CurrencyAmount<Currency>
   }
   allowedSlippage: number
   onRemove: () => void
@@ -36,9 +36,12 @@ interface ConfirmRemoveLiquidityModalProps {
   currencyA: Currency | null | undefined
   currencyB: Currency | null | undefined
   isZap?: boolean
+  toggleZapMode?: (value: boolean) => void
 }
 
-const ConfirmRemoveLiquidityModal: React.FC<InjectedModalProps & ConfirmRemoveLiquidityModalProps> = ({
+const ConfirmRemoveLiquidityModal: React.FC<
+  React.PropsWithChildren<InjectedModalProps & ConfirmRemoveLiquidityModalProps>
+> = ({
   title,
   onDismiss,
   customOnDismiss,
@@ -57,6 +60,7 @@ const ConfirmRemoveLiquidityModal: React.FC<InjectedModalProps & ConfirmRemoveLi
   currencyA,
   currencyB,
   isZap,
+  toggleZapMode,
 }) => {
   const { t } = useTranslation()
 
@@ -138,19 +142,21 @@ const ConfirmRemoveLiquidityModal: React.FC<InjectedModalProps & ConfirmRemoveLi
         </Button>
       </>
     )
-  }, [currencyA, currencyB, parsedAmounts, approval, onRemove, pair, signatureData, tokenA, tokenB, t])
+  }, [currencyA, currencyB, parsedAmounts, approval, onRemove, pair, tokenA, tokenB, t, signatureData])
 
   const confirmationContent = useCallback(
     () =>
       liquidityErrorMessage ? (
         <>
-          {isZap && <ZapErrorMessages isSingleToken />}
+          {isZap && (
+            <ZapErrorMessages isSingleToken zapMode={isZap} toggleZapMode={toggleZapMode} onModalDismiss={onDismiss} />
+          )}
           <TransactionErrorContent onDismiss={onDismiss} message={liquidityErrorMessage} />
         </>
       ) : (
         <ConfirmationModalContent topContent={modalHeader} bottomContent={modalBottom} />
       ),
-    [liquidityErrorMessage, isZap, onDismiss, modalHeader, modalBottom],
+    [liquidityErrorMessage, isZap, toggleZapMode, onDismiss, modalHeader, modalBottom],
   )
 
   return (

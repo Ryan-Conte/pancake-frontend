@@ -1,14 +1,14 @@
 import { useCallback } from 'react'
-import { useWeb3React } from '@web3-react/core'
+import { useWeb3React } from '@pancakeswap/wagmi'
 import { Contract } from '@ethersproject/contracts'
 import { MaxUint256 } from '@ethersproject/constants'
 import { useAppDispatch } from 'state'
 import { updateUserAllowance } from 'state/actions'
 import { VaultKey } from 'state/types'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { useSousChef, useVaultPoolContract } from 'hooks/useContract'
-import useToast from 'hooks/useToast'
-import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import { useToast } from '@pancakeswap/uikit'
+import { useCallWithMarketGasPrice } from 'hooks/useCallWithMarketGasPrice'
 import useCatchTxError from 'hooks/useCatchTxError'
 import { ToastDescriptionWithTx } from 'components/Toast'
 import useCakeApprovalStatus from 'hooks/useCakeApprovalStatus'
@@ -17,7 +17,7 @@ import useCakeApprove from 'hooks/useCakeApprove'
 export const useApprovePool = (lpContract: Contract, sousId, earningTokenSymbol) => {
   const { toastSuccess } = useToast()
   const { fetchWithCatchTxError, loading: pendingTx } = useCatchTxError()
-  const { callWithGasPrice } = useCallWithGasPrice()
+  const { callWithMarketGasPrice } = useCallWithMarketGasPrice()
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const { account } = useWeb3React()
@@ -25,7 +25,7 @@ export const useApprovePool = (lpContract: Contract, sousId, earningTokenSymbol)
 
   const handleApprove = useCallback(async () => {
     const receipt = await fetchWithCatchTxError(() => {
-      return callWithGasPrice(lpContract, 'approve', [sousChefContract.address, MaxUint256])
+      return callWithMarketGasPrice(lpContract, 'approve', [sousChefContract.address, MaxUint256])
     })
     if (receipt?.status) {
       toastSuccess(
@@ -45,7 +45,7 @@ export const useApprovePool = (lpContract: Contract, sousId, earningTokenSymbol)
     earningTokenSymbol,
     t,
     toastSuccess,
-    callWithGasPrice,
+    callWithMarketGasPrice,
     fetchWithCatchTxError,
   ])
 

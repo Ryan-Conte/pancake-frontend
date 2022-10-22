@@ -1,36 +1,36 @@
-import { useMemo, useState } from 'react'
-import styled from 'styled-components'
-import { useWeb3React } from '@web3-react/core'
-import BigNumber from 'bignumber.js'
 import { MaxUint256 } from '@ethersproject/constants'
 import { parseUnits } from '@ethersproject/units'
+import { useTranslation } from '@pancakeswap/localization'
+import { bscTokens } from '@pancakeswap/tokens'
 import {
+  BalanceInput,
+  Box,
+  Button,
+  Flex,
+  Image,
+  Link,
+  Message,
   Modal,
   ModalBody,
   Text,
-  Image,
-  Button,
-  BalanceInput,
-  Flex,
-  useTooltip,
   TooltipText,
-  Box,
-  Link,
-  Message,
+  useToast,
+  useTooltip,
 } from '@pancakeswap/uikit'
-import { PoolIds, Ifo } from 'config/constants/types'
-import { WalletIfoData, PublicIfoData } from 'views/Ifos/types'
-import { useTranslation } from 'contexts/Localization'
-import { formatNumber, getBalanceAmount } from 'utils/formatBalance'
+import { useWeb3React } from '@pancakeswap/wagmi'
+import BigNumber from 'bignumber.js'
 import ApproveConfirmButtons from 'components/ApproveConfirmButtons'
 import { ToastDescriptionWithTx } from 'components/Toast'
-import useApproveConfirmTransaction from 'hooks/useApproveConfirmTransaction'
-import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
-import useToast from 'hooks/useToast'
 import { DEFAULT_TOKEN_DECIMAL } from 'config'
+import { Ifo, PoolIds } from 'config/constants/types'
+import useApproveConfirmTransaction from 'hooks/useApproveConfirmTransaction'
+import { useCallWithMarketGasPrice } from 'hooks/useCallWithMarketGasPrice'
 import { useERC20 } from 'hooks/useContract'
-import tokens from 'config/constants/tokens'
+import { useMemo, useState } from 'react'
+import styled from 'styled-components'
+import { formatNumber, getBalanceAmount } from 'utils/formatBalance'
 import { requiresApproval } from 'utils/requiresApproval'
+import { PublicIfoData, WalletIfoData } from 'views/Ifos/types'
 
 const MessageTextLink = styled(Link)`
   display: inline;
@@ -55,7 +55,7 @@ const multiplierValues = [0.1, 0.25, 0.5, 0.75, 1]
 // Default value for transaction setting, tweak based on BSC network congestion.
 const gasPrice = parseUnits('10', 'gwei').toString()
 
-const SmallAmountNotice: React.FC<{ url: string }> = ({ url }) => {
+const HasVestingNotice: React.FC<React.PropsWithChildren<{ url: string }>> = ({ url }) => {
   const { t } = useTranslation()
 
   return (
@@ -74,7 +74,7 @@ const SmallAmountNotice: React.FC<{ url: string }> = ({ url }) => {
   )
 }
 
-const ContributeModal: React.FC<Props> = ({
+const ContributeModal: React.FC<React.PropsWithChildren<Props>> = ({
   poolId,
   ifo,
   publicIfoData,
@@ -94,12 +94,12 @@ const ContributeModal: React.FC<Props> = ({
   const { contract } = walletIfoData
   const [value, setValue] = useState('')
   const { account } = useWeb3React()
-  const { callWithGasPrice } = useCallWithGasPrice()
+  const { callWithMarketGasPrice } = useCallWithMarketGasPrice()
   const raisingTokenContractReader = useERC20(currency.address, false)
   const raisingTokenContractApprover = useERC20(currency.address)
   const { t } = useTranslation()
   const valueWithTokenDecimals = new BigNumber(value).times(DEFAULT_TOKEN_DECIMAL)
-  const label = currency === tokens.cake ? t('Max. CAKE entry') : t('Max. token entry')
+  const label = currency === bscTokens.cake ? t('Max. CAKE entry') : t('Max. token entry')
 
   const { isApproving, isApproved, isConfirmed, isConfirming, handleApprove, handleConfirm } =
     useApproveConfirmTransaction({
@@ -107,7 +107,7 @@ const ContributeModal: React.FC<Props> = ({
         return requiresApproval(raisingTokenContractReader, account, contract.address)
       },
       onApprove: () => {
-        return callWithGasPrice(raisingTokenContractApprover, 'approve', [contract.address, MaxUint256], {
+        return callWithMarketGasPrice(raisingTokenContractApprover, 'approve', [contract.address, MaxUint256], {
           gasPrice,
         })
       },
@@ -120,7 +120,7 @@ const ContributeModal: React.FC<Props> = ({
         )
       },
       onConfirm: () => {
-        return callWithGasPrice(
+        return callWithMarketGasPrice(
           contract,
           'depositPool',
           [valueWithTokenDecimals.toString(), poolId === PoolIds.poolBasic ? 0 : 1],
@@ -197,7 +197,7 @@ const ContributeModal: React.FC<Props> = ({
                 src={
                   ifo.currency.symbol === 'CAKE'
                     ? '/images/cake.svg'
-                    : `/images/farms/${currency.symbol.split(' ')[0].toLocaleLowerCase()}.svg`
+                    : `/images/farms/${currency.symbol.split(' ')[0].toLowerCase()}.svg`
                 }
                 width={24}
                 height={24}
@@ -249,7 +249,7 @@ const ContributeModal: React.FC<Props> = ({
               </Button>
             ))}
           </Flex>
-          {vestingInformation.percentage > 0 && <SmallAmountNotice url={articleUrl} />}
+          {vestingInformation.percentage > 0 && <HasVestingNotice url={articleUrl} />}
           <Text color="textSubtle" fontSize="12px" mb="24px">
             {t(
               'If you don’t commit enough CAKE, you may not receive a meaningful amount of IFO tokens, or you may not receive any IFO tokens at all.',

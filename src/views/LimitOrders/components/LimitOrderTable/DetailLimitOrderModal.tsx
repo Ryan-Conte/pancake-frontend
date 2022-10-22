@@ -1,5 +1,16 @@
-import { Button, Flex, Box, Modal, Text, ChevronRightIcon, InjectedModalProps, Tag, Spinner } from '@pancakeswap/uikit'
-import { useTranslation } from 'contexts/Localization'
+import {
+  Button,
+  Flex,
+  Box,
+  Modal,
+  Text,
+  ChevronRightIcon,
+  InjectedModalProps,
+  Tag,
+  Spinner,
+  useMatchBreakpoints,
+} from '@pancakeswap/uikit'
+import { useTranslation } from '@pancakeswap/localization'
 import useTheme from 'hooks/useTheme'
 import { memo, useCallback, useState } from 'react'
 import styled from 'styled-components'
@@ -26,11 +37,16 @@ interface DetailLimitOrderModalProps extends InjectedModalProps {
   formattedOrder: FormattedOrderData
 }
 
-export const DetailLimitOrderModal: React.FC<DetailLimitOrderModalProps> = ({ onDismiss, order, formattedOrder }) => {
+export const DetailLimitOrderModal: React.FC<React.PropsWithChildren<DetailLimitOrderModalProps>> = ({
+  onDismiss,
+  order,
+  formattedOrder,
+}) => {
   const { chainId } = useActiveWeb3React()
   const { theme } = useTheme()
   const { t } = useTranslation()
   const { handleLimitOrderCancellation } = useGelatoLimitOrdersHandlers()
+  const { isMobile } = useMatchBreakpoints()
 
   const [{ cancellationErrorMessage, attemptingTxn, txHash }, setCancellationState] = useState<{
     attemptingTxn: boolean
@@ -122,7 +138,7 @@ export const DetailLimitOrderModal: React.FC<DetailLimitOrderModalProps> = ({ on
         {isOpen ? (
           <>
             <Button variant="primary" mt="16px" as="a" external href={formattedOrder.bscScanUrls.created}>
-              {t('View on BSCScan')}
+              {t('View on BscScan')}
             </Button>
             {!isSubmissionPending && (
               <Button variant="danger" mt="16px" onClick={onCancelOrder}>
@@ -151,8 +167,8 @@ export const DetailLimitOrderModal: React.FC<DetailLimitOrderModalProps> = ({ on
   return (
     <Modal
       title={t('Open Order Details')}
-      headerBackground={theme.colors.gradients.cardHeader}
-      style={{ width: '436px' }}
+      headerBackground={theme.colors.gradientCardHeader}
+      style={{ width: isMobile ? '100%' : '436px' }}
       onDismiss={onDismiss}
     >
       {attemptingTxn ? (
@@ -180,7 +196,7 @@ interface LimitTradeInfoCardProps {
   isCancellationPending: boolean
 }
 
-const LimitTradeInfoCard: React.FC<LimitTradeInfoCardProps> = memo(
+const LimitTradeInfoCard: React.FC<React.PropsWithChildren<LimitTradeInfoCardProps>> = memo(
   ({
     limitPriceExchangeRateText,
     limitPriceExchangeRateTextReversed,
@@ -228,7 +244,7 @@ const LimitTradeInfoCard: React.FC<LimitTradeInfoCardProps> = memo(
   },
 )
 
-const LoadingContent: React.FC = memo(() => {
+const LoadingContent: React.FC<React.PropsWithChildren> = memo(() => {
   const { t } = useTranslation()
   return (
     <Flex>

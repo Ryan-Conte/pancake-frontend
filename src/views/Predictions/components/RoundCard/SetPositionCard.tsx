@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import {
   ArrowBackIcon,
   Card,
@@ -19,12 +19,12 @@ import {
 import { BigNumber, FixedNumber } from '@ethersproject/bignumber'
 import { Zero } from '@ethersproject/constants'
 import { parseUnits } from '@ethersproject/units'
-import { useWeb3React } from '@web3-react/core'
+import { useWeb3React } from '@pancakeswap/wagmi'
 import { useGetMinBetAmount } from 'state/predictions/hooks'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { usePredictionsContract } from 'hooks/useContract'
 import { useGetBnbBalance, useGetCakeBalance } from 'hooks/useTokenBalance'
-import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import { useCallWithMarketGasPrice } from 'hooks/useCallWithMarketGasPrice'
 import useCatchTxError from 'hooks/useCatchTxError'
 import { BetPosition } from 'state/types'
 import { formatBigNumber, formatFixedNumber } from 'utils/formatBalance'
@@ -81,7 +81,13 @@ const TOKEN_BALANCE_CONFIG = {
   CAKE: useGetCakeBalance,
 }
 
-const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosition, epoch, onBack, onSuccess }) => {
+const SetPositionCard: React.FC<React.PropsWithChildren<SetPositionCardProps>> = ({
+  position,
+  togglePosition,
+  epoch,
+  onBack,
+  onSuccess,
+}) => {
   const [value, setValue] = useState('')
   const [errorMessage, setErrorMessage] = useState(null)
   const [percent, setPercent] = useState(0)
@@ -90,7 +96,7 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
   const minBetAmount = useGetMinBetAmount()
   const { t } = useTranslation()
   const { fetchWithCatchTxError, loading: isTxPending } = useCatchTxError()
-  const { callWithGasPrice } = useCallWithGasPrice()
+  const { callWithMarketGasPrice } = useCallWithMarketGasPrice()
   const { address: predictionsAddress, token } = useConfig()
   const predictionsContract = usePredictionsContract(predictionsAddress, token.symbol)
   const useTokenBalance = useMemo(() => {
@@ -134,18 +140,21 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
     setValue(input)
   }
 
-  const handlePercentChange = (sliderPercent: number) => {
-    if (sliderPercent > 0) {
-      const maxValueAsFn = FixedNumber.from(maxBalance)
-      const hundredAsFn = FixedNumber.from(100)
-      const sliderPercentAsFn = FixedNumber.from(sliderPercent.toFixed(18)).divUnsafe(hundredAsFn)
-      const balancePercentage = maxValueAsFn.mulUnsafe(sliderPercentAsFn)
-      setValue(formatFixedNumber(balancePercentage))
-    } else {
-      setValue('')
-    }
-    setPercent(sliderPercent)
-  }
+  const handlePercentChange = useCallback(
+    (sliderPercent: number) => {
+      if (sliderPercent > 0) {
+        const maxValueAsFn = FixedNumber.from(maxBalance)
+        const hundredAsFn = FixedNumber.from(100)
+        const sliderPercentAsFn = FixedNumber.from(sliderPercent.toFixed(18)).divUnsafe(hundredAsFn)
+        const balancePercentage = maxValueAsFn.mulUnsafe(sliderPercentAsFn)
+        setValue(formatFixedNumber(balancePercentage))
+      } else {
+        setValue('')
+      }
+      setPercent(sliderPercent)
+    },
+    [maxBalance],
+  )
 
   // Clear value
   const handleGoBack = () => {
@@ -169,7 +178,7 @@ const SetPositionCard: React.FC<SetPositionCardProps> = ({ position, togglePosit
     const args = token.symbol === 'CAKE' ? [epoch, valueAsBn.toString()] : [epoch]
 
     const receipt = await fetchWithCatchTxError(() => {
-      return callWithGasPrice(predictionsContract, betMethod, args, callOptions)
+      return callWithMarketGasPrice(predictionsContract, betMethod, args, callOptions)
     })
     if (receipt?.status) {
       onSuccess(receipt.transactionHash)

@@ -1,11 +1,12 @@
-import { useWeb3React } from '@web3-react/core'
+import { useWeb3React } from '@pancakeswap/wagmi'
 import { Flex, Box, Card, CardBody, Text, Button, BinanceIcon, Skeleton, useModal } from '@pancakeswap/uikit'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { formatNumber } from 'utils/formatBalance'
 import { multiplyPriceByAmount } from 'utils/prices'
 import { NftToken } from 'state/nftMarket/types'
 import NFTMedia from 'views/Nft/market/components/NFTMedia'
 import { useBNBBusdPrice } from 'hooks/useBUSDPrice'
+import { isAddress } from 'utils'
 import BuyModal from '../../../components/BuySellModals/BuyModal'
 import SellModal from '../../../components/BuySellModals/SellModal'
 import { nftsBaseUrl } from '../../../constants'
@@ -17,7 +18,7 @@ interface MainPancakeBunnyCardProps {
   onSuccessSale: () => void
 }
 
-const MainPancakeBunnyCard: React.FC<MainPancakeBunnyCardProps> = ({
+const MainPancakeBunnyCard: React.FC<React.PropsWithChildren<MainPancakeBunnyCardProps>> = ({
   cheapestNft,
   nothingForSaleBunny,
   onSuccessSale,
@@ -28,9 +29,7 @@ const MainPancakeBunnyCard: React.FC<MainPancakeBunnyCardProps> = ({
 
   const nftToDisplay = cheapestNft || nothingForSaleBunny
 
-  const onlyOwnNftsOnSale = account
-    ? cheapestNft?.marketData?.currentSeller.toLowerCase() === account.toLowerCase()
-    : false
+  const onlyOwnNftsOnSale = account ? isAddress(cheapestNft?.marketData?.currentSeller) === isAddress(account) : false
 
   const priceInUsd = multiplyPriceByAmount(bnbBusdPrice, parseFloat(nftToDisplay?.marketData?.currentAskPrice))
   const [onPresentBuyModal] = useModal(<BuyModal nftToBuy={nftToDisplay} />)

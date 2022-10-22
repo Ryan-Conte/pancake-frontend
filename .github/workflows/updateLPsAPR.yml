@@ -10,6 +10,7 @@ on:
 jobs:
   updateLPsAPRs:
     runs-on: ubuntu-latest
+    if: github.repository == 'pancakeswap/pancake-frontend'
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -17,7 +18,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v2
         with:
-          node-version: 14.x
+          node-version: 16.x
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -26,7 +27,6 @@ jobs:
         run: yarn updateLPsAPR
         env:
           NEXT_PUBLIC_SF_HEADER: ${{ secrets.SF_HEADER }}
-          NEXT_PUBLIC_CHAIN_ID: '56'
 
       - name: Format
         run: yarn format:write

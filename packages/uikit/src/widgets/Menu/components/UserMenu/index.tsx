@@ -15,7 +15,7 @@ export const StyledUserMenu = styled(Flex)`
   cursor: pointer;
   display: inline-flex;
   height: 32px;
-  padding-left: 40px;
+  padding-left: 32px;
   padding-right: 8px;
   position: relative;
 
@@ -69,6 +69,8 @@ const UserMenu: React.FC<UserMenuProps> = ({
   avatarSrc,
   variant = variants.DEFAULT,
   children,
+  disabled,
+  placement = "bottom-end",
   ...props
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -77,7 +79,7 @@ const UserMenu: React.FC<UserMenuProps> = ({
   const accountEllipsis = account ? `${account.substring(0, 2)}...${account.substring(account.length - 4)}` : null;
   const { styles, attributes } = usePopper(targetRef, tooltipRef, {
     strategy: "fixed",
-    placement: "bottom-end",
+    placement,
     modifiers: [{ name: "offset", options: { offset: [0, 0] } }],
   });
 
@@ -111,12 +113,14 @@ const UserMenu: React.FC<UserMenuProps> = ({
         }}
       >
         <MenuIcon avatarSrc={avatarSrc} variant={variant} />
-        <LabelText title={text || account}>{text || accountEllipsis}</LabelText>
-        <ChevronDownIcon color="text" width="24px" />
+        <LabelText title={typeof text === "string" ? text || account : account}>{text || accountEllipsis}</LabelText>
+        {!disabled && <ChevronDownIcon color="text" width="24px" />}
       </StyledUserMenu>
-      <Menu style={styles.popper} ref={setTooltipRef} {...attributes.popper} isOpen={isOpen}>
-        <Box onClick={() => setIsOpen(false)}>{children?.({ isOpen })}</Box>
-      </Menu>
+      {!disabled && (
+        <Menu style={styles.popper} ref={setTooltipRef} {...attributes.popper} isOpen={isOpen}>
+          <Box onClick={() => setIsOpen(false)}>{children?.({ isOpen })}</Box>
+        </Menu>
+      )}
     </Flex>
   );
 };

@@ -1,16 +1,16 @@
-import { useMemo } from 'react'
-import { Text, Heading, Card } from '@pancakeswap/uikit'
+import { useTranslation } from '@pancakeswap/localization'
+import { Card, Heading, Text } from '@pancakeswap/uikit'
 import Page from 'components/Layout/Page'
-import PoolTable from 'views/Info/components/InfoTables/PoolsTable'
-import { useAllPoolData, usePoolDatas } from 'state/info/hooks'
+import { useMemo } from 'react'
+import { useAllPoolDataSWR, usePoolDatasSWR } from 'state/info/hooks'
 import { useWatchlistPools } from 'state/user/hooks'
-import { useTranslation } from 'contexts/Localization'
+import PoolTable from 'views/Info/components/InfoTables/PoolsTable'
 
-const PoolsOverview: React.FC = () => {
+const PoolsOverview: React.FC<React.PropsWithChildren> = () => {
   const { t } = useTranslation()
 
   // get all the pool datas that exist
-  const allPoolData = useAllPoolData()
+  const allPoolData = useAllPoolDataSWR()
   const poolDatas = useMemo(() => {
     return Object.values(allPoolData)
       .map((pool) => pool.data)
@@ -18,7 +18,7 @@ const PoolsOverview: React.FC = () => {
   }, [allPoolData])
 
   const [savedPools] = useWatchlistPools()
-  const watchlistPools = usePoolDatas(savedPools)
+  const watchlistPools = usePoolDatasSWR(savedPools)
 
   return (
     <Page>

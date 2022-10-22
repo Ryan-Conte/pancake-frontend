@@ -12,19 +12,21 @@ import {
   ArrowUpIcon,
   ArrowDownIcon,
 } from '@pancakeswap/uikit'
-import { useAppDispatch } from 'state'
-import { Collection } from 'state/nftMarket/types'
-import { useGetCollections, useGetNftActivityFilters } from 'state/nftMarket/hooks'
-import {
-  addActivityCollectionFilters,
-  removeActivityCollectionFilters,
-  removeAllActivityCollectionFilters,
-} from 'state/nftMarket/reducer'
-import { useTranslation } from 'contexts/Localization'
+import { Collection, MarketEvent } from 'state/nftMarket/types'
+import { useGetCollections } from 'state/nftMarket/hooks'
+import { useNftStorage } from 'state/nftMarket/storage'
+import { useTranslation } from '@pancakeswap/localization'
+import { isAddress } from 'utils'
 import { CloseButton, FilterButton, ListOrderState, SearchWrapper, TriggerButton } from '../ListFilter/styles'
 import { CollectionItemRow } from './styles'
 
-export const ListCollectionFilter: React.FC = () => {
+interface ListCollectionFilterProps {
+  nftActivityFilters: { typeFilters: MarketEvent[]; collectionFilters: string[] }
+}
+
+export const ListCollectionFilter: React.FC<React.PropsWithChildren<ListCollectionFilterProps>> = ({
+  nftActivityFilters,
+}) => {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -32,10 +34,10 @@ export const ListCollectionFilter: React.FC = () => {
   const { data: collections } = useGetCollections()
   const wrapperRef = useRef(null)
   const menuRef = useRef(null)
-  const dispatch = useAppDispatch()
+  const { addActivityCollectionFilters, removeActivityCollectionFilters, removeAllActivityCollectionFilters } =
+    useNftStorage()
 
   const { orderKey, orderDir } = orderState
-  const nftActivityFilters = useGetNftActivityFilters('')
   const isAnyCollectionSelected = nftActivityFilters.collectionFilters.length > 0
 
   const filteredCollections = (
@@ -44,13 +46,13 @@ export const ListCollectionFilter: React.FC = () => {
       : Object.values(collections)
   ).map((item) => {
     const isItemSelected = nftActivityFilters.collectionFilters.some((collectionAddress) => {
-      return item.address.toLowerCase() === collectionAddress.toLowerCase()
+      return isAddress(item.address) === isAddress(collectionAddress)
     })
     return { ...item, isSelected: isItemSelected }
   })
 
   const handleClearFilter = () => {
-    dispatch(removeAllActivityCollectionFilters())
+    removeAllActivityCollectionFilters()
   }
 
   const handleMenuClick = () => setIsOpen(!isOpen)
@@ -62,9 +64,9 @@ export const ListCollectionFilter: React.FC = () => {
 
   const handleItemClick = (evt: ChangeEvent<HTMLInputElement>, collection: Collection) => {
     if (evt.target.checked) {
-      dispatch(addActivityCollectionFilters({ collection: collection.address.toLowerCase() }))
+      addActivityCollectionFilters({ collection: collection.address.toLowerCase() })
     } else {
-      dispatch(removeActivityCollectionFilters({ collection: collection.address.toLowerCase() }))
+      removeActivityCollectionFilters({ collection: collection.address.toLowerCase() })
     }
   }
 

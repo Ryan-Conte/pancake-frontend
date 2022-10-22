@@ -1,22 +1,26 @@
-import { Button, Flex, Text } from '@pancakeswap/uikit'
+import { useTranslation } from '@pancakeswap/localization'
+import { Flex, Skeleton, Text } from '@pancakeswap/uikit'
+import BigNumber from 'bignumber.js'
 import ConnectWalletButton from 'components/ConnectWalletButton'
-import { ToastDescriptionWithTx } from 'components/Toast'
-import { useTranslation } from 'contexts/Localization'
-import { useERC20 } from 'hooks/useContract'
-import useToast from 'hooks/useToast'
-import useCatchTxError from 'hooks/useCatchTxError'
-import { useCallback } from 'react'
-import { useAppDispatch } from 'state'
-import { fetchFarmUserDataAsync } from 'state/farms'
+import { useContext } from 'react'
 import styled from 'styled-components'
-import { getAddress } from 'utils/addressHelpers'
+import { HarvestActionContainer, ProxyHarvestActionContainer } from '../FarmTable/Actions/HarvestAction'
+import { ProxyStakedContainer, StakedContainer } from '../FarmTable/Actions/StakedAction'
 import { FarmWithStakedValue } from '../types'
-import useApproveFarm from '../../hooks/useApproveFarm'
+import BoostedAction from '../YieldBooster/components/BoostedAction'
+import { YieldBoosterStateContext } from '../YieldBooster/components/ProxyFarmContainer'
 import HarvestAction from './HarvestAction'
 import StakeAction from './StakeAction'
 
 const Action = styled.div`
   padding-top: 16px;
+`
+
+const ActionContainer = styled.div`
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 `
 
 interface FarmCardActionsProps {
@@ -27,39 +31,19 @@ interface FarmCardActionsProps {
   displayApr?: string
 }
 
-const CardActions: React.FC<FarmCardActionsProps> = ({ farm, account, addLiquidityUrl, lpLabel, displayApr }) => {
+const CardActions: React.FC<React.PropsWithChildren<FarmCardActionsProps>> = ({
+  farm,
+  account,
+  addLiquidityUrl,
+  lpLabel,
+  displayApr,
+}) => {
   const { t } = useTranslation()
-  const { toastSuccess } = useToast()
-  const { fetchWithCatchTxError, loading: pendingTx } = useCatchTxError()
-  const { pid, lpAddresses } = farm
-  const { allowance, earnings } = farm.userData || {}
-  const lpAddress = getAddress(lpAddresses)
-  const isApproved = account && allowance && allowance.isGreaterThan(0)
-  const dispatch = useAppDispatch()
-
-  const lpContract = useERC20(lpAddress)
-
-  const { onApprove } = useApproveFarm(lpContract)
-
-  const handleApprove = useCallback(async () => {
-    const receipt = await fetchWithCatchTxError(() => {
-      return onApprove()
-    })
-    if (receipt?.status) {
-      toastSuccess(t('Contract Enabled'), <ToastDescriptionWithTx txHash={receipt.transactionHash} />)
-      dispatch(fetchFarmUserDataAsync({ account, pids: [pid] }))
-    }
-  }, [onApprove, dispatch, account, pid, t, toastSuccess, fetchWithCatchTxError])
-
-  const renderApprovalOrStakeButton = () => {
-    return isApproved ? (
-      <StakeAction {...farm} lpLabel={lpLabel} addLiquidityUrl={addLiquidityUrl} displayApr={displayApr} />
-    ) : (
-      <Button mt="8px" width="100%" disabled={pendingTx} onClick={handleApprove}>
-        {t('Enable Contract')}
-      </Button>
-    )
-  }
+  const { pid, token, quoteToken, vaultPid, lpSymbol, lpAddress } = farm
+  const { earnings } = farm.userData || {}
+  const { shouldUseProxyFarm } = useContext(YieldBoosterStateContext)
+  const isReady = farm.multiplier !== undefined
+  const { stakedBalance, tokenBalance, proxy } = farm.userData
 
   return (
     <Action>
@@ -71,16 +55,75 @@ const CardActions: React.FC<FarmCardActionsProps> = ({ farm, account, addLiquidi
           {t('Earned')}
         </Text>
       </Flex>
-      <HarvestAction earnings={earnings} pid={pid} />
-      <Flex>
-        <Text bold textTransform="uppercase" color="secondary" fontSize="12px" pr="4px">
-          {farm.lpSymbol}
-        </Text>
-        <Text bold textTransform="uppercase" color="textSubtle" fontSize="12px">
-          {t('Staked')}
-        </Text>
-      </Flex>
-      {!account ? <ConnectWalletButton mt="8px" width="100%" /> : renderApprovalOrStakeButton()}
+      {shouldUseProxyFarm ? (
+        <ProxyHarvestActionContainer
+          lpAddress={lpAddress}
+          earnings={earnings}
+          pid={pid}
+          vaultPid={vaultPid}
+          token={token}
+          quoteToken={quoteToken}
+          lpSymbol={lpSymbol}
+        >
+          {(props) => <HarvestAction {...props} />}
+        </ProxyHarvestActionContainer>
+      ) : (
+        <HarvestActionContainer
+          earnings={earnings}
+          pid={pid}
+          vaultPid={vaultPid}
+          token={token}
+          quoteToken={quoteToken}
+          lpSymbol={lpSymbol}
+        >
+          {(props) => <HarvestAction {...props} />}
+        </HarvestActionContainer>
+      )}
+      {farm.boosted && (
+        <BoostedAction
+          title={(status) => (
+            <Flex>
+              <Text bold textTransform="uppercase" color="textSubtle" fontSize="12px" pr="4px">
+                {t('Yield Booster')}
+              </Text>
+              <Text bold textTransform="uppercase" color="secondary" fontSize="12px">
+                {status}
+              </Text>
+            </Flex>
+          )}
+          desc={(actionBtn) => <ActionContainer>{actionBtn}</ActionContainer>}
+          farmPid={farm.pid}
+          lpTotalSupply={farm.lpTotalSupply}
+          userBalanceInFarm={
+            (stakedBalance.plus(tokenBalance).gt(0)
+              ? stakedBalance.plus(tokenBalance)
+              : proxy?.stakedBalance.plus(proxy?.tokenBalance)) ?? new BigNumber(0)
+          }
+        />
+      )}
+      {isReady ? (
+        <Flex>
+          <Text bold textTransform="uppercase" color="secondary" fontSize="12px" pr="4px">
+            {farm.lpSymbol}
+          </Text>
+          <Text bold textTransform="uppercase" color="textSubtle" fontSize="12px">
+            {t('Staked')}
+          </Text>
+        </Flex>
+      ) : (
+        <Skeleton width={80} height={18} mb="4px" />
+      )}
+      {!account ? (
+        <ConnectWalletButton mt="8px" width="100%" />
+      ) : shouldUseProxyFarm ? (
+        <ProxyStakedContainer {...farm} lpLabel={lpLabel} addLiquidityUrl={addLiquidityUrl} displayApr={displayApr}>
+          {(props) => <StakeAction {...props} />}
+        </ProxyStakedContainer>
+      ) : (
+        <StakedContainer {...farm} lpLabel={lpLabel} addLiquidityUrl={addLiquidityUrl} displayApr={displayApr}>
+          {(props) => <StakeAction {...props} />}
+        </StakedContainer>
+      )}
     </Action>
   )
 }

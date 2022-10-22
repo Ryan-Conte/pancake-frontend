@@ -13,7 +13,7 @@ import {
   Th,
   Card,
   Skeleton,
-  useMatchBreakpointsContext,
+  useMatchBreakpoints,
 } from '@pancakeswap/uikit'
 import useSWRImmutable from 'swr/immutable'
 import orderBy from 'lodash/orderBy'
@@ -26,12 +26,13 @@ import { laggyMiddleware } from 'hooks/useSWRContract'
 import { FetchStatus } from 'config/constants/types'
 import { useGetShuffledCollections } from 'state/nftMarket/hooks'
 import Select, { OptionProps } from 'components/Select/Select'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import Page from 'components/Layout/Page'
 import PageHeader from 'components/PageHeader'
 import { nftsBaseUrl } from 'views/Nft/market/constants'
 import PageLoader from 'components/Loader/PageLoader'
 import ToggleView from 'components/ToggleView/ToggleView'
+import DELIST_COLLECTIONS from 'config/constants/nftsCollections/delist'
 import { CollectionCard } from '../components/CollectibleCard'
 import { BNBAmountLabel } from '../components/CollectibleCard/styles'
 
@@ -45,6 +46,15 @@ const SORT_FIELD = {
   lowestPrice: 'lowestPrice',
   highestPrice: 'highestPrice',
 }
+
+const SORT_FIELD_INDEX_MAP = new Map([
+  [SORT_FIELD.createdAt, 1],
+  [SORT_FIELD.volumeBNB, 2],
+  [SORT_FIELD.items, 3],
+  [SORT_FIELD.supply, 4],
+  [SORT_FIELD.lowestPrice, 5],
+  [SORT_FIELD.highestPrice, 6],
+])
 
 export const PageButtons = styled.div`
   width: 100%;
@@ -73,12 +83,40 @@ const getNewSortDirection = (oldSortField: string, newSortField: string, oldSort
 const Collectible = () => {
   const { t } = useTranslation()
   const { data: shuffledCollections } = useGetShuffledCollections()
-  const { isMobile } = useMatchBreakpointsContext()
+  const { isMobile } = useMatchBreakpoints()
   const [sortField, setSortField] = useState(null)
   const [page, setPage] = useState(1)
   const [maxPage, setMaxPage] = useState(1)
   const [viewMode, setViewMode] = useState(ViewMode.CARD)
   const [sortDirection, setSortDirection] = useState<boolean>(false)
+  const options = useMemo(() => {
+    return [
+      {
+        label: t('Collection'),
+        value: SORT_FIELD.createdAt,
+      },
+      {
+        label: t('Volume'),
+        value: SORT_FIELD.volumeBNB,
+      },
+      {
+        label: t('Items'),
+        value: SORT_FIELD.items,
+      },
+      {
+        label: t('Supply'),
+        value: SORT_FIELD.supply,
+      },
+      {
+        label: t('Lowest Price'),
+        value: SORT_FIELD.lowestPrice,
+      },
+      {
+        label: t('Highest Price'),
+        value: SORT_FIELD.highestPrice,
+      },
+    ]
+  }, [t])
 
   const { data: collections = [], status } = useSWRImmutable<
     (Collection & Partial<{ lowestPrice: number; highestPrice: number }>)[]
@@ -156,7 +194,7 @@ const Collectible = () => {
         return parseFloat(collection[sortField])
       },
       sortDirection ? 'desc' : 'asc',
-    )
+    ).filter((collection) => !DELIST_COLLECTIONS[collection.address])
   }, [collections, sortField, sortDirection])
 
   return (
@@ -184,33 +222,9 @@ const Collectible = () => {
                   {t('Sort By')}
                 </Text>
                 <Select
-                  options={[
-                    {
-                      label: t('Collection'),
-                      value: SORT_FIELD.createdAt,
-                    },
-                    {
-                      label: t('Volume'),
-                      value: SORT_FIELD.volumeBNB,
-                    },
-                    {
-                      label: t('Items'),
-                      value: SORT_FIELD.items,
-                    },
-                    {
-                      label: t('Supply'),
-                      value: SORT_FIELD.supply,
-                    },
-                    {
-                      label: t('Lowest Price'),
-                      value: SORT_FIELD.lowestPrice,
-                    },
-                    {
-                      label: t('Highest Price'),
-                      value: SORT_FIELD.highestPrice,
-                    },
-                  ]}
+                  options={options}
                   placeHolderText={t('Select')}
+                  defaultOptionIndex={SORT_FIELD_INDEX_MAP.get(sortField)}
                   onOptionChange={(option: OptionProps) => handleSort(option.value)}
                 />
               </Flex>

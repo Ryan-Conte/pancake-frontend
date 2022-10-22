@@ -1,9 +1,9 @@
 import { createAction } from '@reduxjs/toolkit'
-import { SerializedToken } from 'config/constants/types'
+import { SerializedWrappedToken } from '@pancakeswap/tokens'
 
 export interface SerializedPair {
-  token0: SerializedToken
-  token1: SerializedToken
+  token0: SerializedWrappedToken
+  token1: SerializedWrappedToken
 }
 
 export enum FarmStakedOnly {
@@ -28,11 +28,12 @@ export const updateUserSlippageTolerance = createAction<{ userSlippageTolerance:
   'user/updateUserSlippageTolerance',
 )
 export const updateUserDeadline = createAction<{ userDeadline: number }>('user/updateUserDeadline')
-export const addSerializedToken = createAction<{ serializedToken: SerializedToken }>('user/addSerializedToken')
+export const addSerializedToken = createAction<{ serializedToken: SerializedWrappedToken }>('user/addSerializedToken')
 export const removeSerializedToken = createAction<{ chainId: number; address: string }>('user/removeSerializedToken')
 export const addSerializedPair = createAction<{ serializedPair: SerializedPair }>('user/addSerializedPair')
-export const removeSerializedPair =
-  createAction<{ chainId: number; tokenAAddress: string; tokenBAddress: string }>('user/removeSerializedPair')
+export const removeSerializedPair = createAction<{ chainId: number; tokenAAddress: string; tokenBAddress: string }>(
+  'user/removeSerializedPair',
+)
 
 export const muteAudio = createAction<void>('user/muteAudio')
 export const unmuteAudio = createAction<void>('user/unmuteAudio')
@@ -61,7 +62,6 @@ export const updateUserExpertModeAcknowledgementShow = createAction<{ userExpert
 export const updateUserUsernameVisibility = createAction<{ userUsernameVisibility: boolean }>(
   'user/updateUserUsernameVisibility',
 )
-export const updateGasPrice = createAction<{ gasPrice: string }>('user/updateGasPrice')
 
 export const addWatchlistToken = createAction<{ address: string }>('user/addWatchlistToken')
 export const addWatchlistPool = createAction<{ address: string }>('user/addWatchlistPool')

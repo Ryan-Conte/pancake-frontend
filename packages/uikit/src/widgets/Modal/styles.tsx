@@ -28,6 +28,7 @@ export const ModalTitle = styled(Flex)`
 export const ModalBody = styled(Flex)`
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   max-height: calc(90vh - ${mobileFooterHeight}px);
   ${({ theme }) => theme.mediaQueries.md} {
     display: flex;
@@ -35,7 +36,9 @@ export const ModalBody = styled(Flex)`
   }
 `;
 
-export const ModalCloseButton: React.FC<{ onDismiss: ModalProps["onDismiss"] }> = ({ onDismiss }) => {
+export const ModalCloseButton: React.FC<React.PropsWithChildren<{ onDismiss: ModalProps["onDismiss"] }>> = ({
+  onDismiss,
+}) => {
   return (
     <IconButton variant="text" onClick={onDismiss} aria-label="Close the dialog">
       <CloseIcon color="primary" />
@@ -43,7 +46,7 @@ export const ModalCloseButton: React.FC<{ onDismiss: ModalProps["onDismiss"] }> 
   );
 };
 
-export const ModalBackButton: React.FC<{ onBack: ModalProps["onBack"] }> = ({ onBack }) => {
+export const ModalBackButton: React.FC<React.PropsWithChildren<{ onBack: ModalProps["onBack"] }>> = ({ onBack }) => {
   return (
     <IconButton variant="text" onClick={onBack} area-label="go back" mr="8px">
       <ArrowBackIcon color="primary" />
@@ -51,27 +54,26 @@ export const ModalBackButton: React.FC<{ onBack: ModalProps["onBack"] }> = ({ on
   );
 };
 
-export const ModalContainer = styled(MotionBox)<{ minWidth: string }>`
+export const ModalContainer = styled(MotionBox)<{ $minWidth: string }>`
   overflow: hidden;
   background: ${({ theme }) => theme.modal.background};
   box-shadow: 0px 20px 36px -8px rgba(14, 14, 44, 0.1), 0px 1px 1px rgba(0, 0, 0, 0.05);
   border: 1px solid ${({ theme }) => theme.colors.cardBorder};
   border-radius: 32px 32px 0px 0px;
   width: 100%;
-  max-height: 90vh;
   max-height: calc(var(--vh, 1vh) * 100);
   z-index: ${({ theme }) => theme.zIndices.modal};
   position: absolute;
-  min-width: ${({ minWidth }) => minWidth};
+  min-width: ${({ $minWidth }) => $minWidth};
   bottom: 0;
   max-width: none !important;
+  min-height: 300px;
 
   ${({ theme }) => theme.mediaQueries.md} {
     width: auto;
     position: auto;
     bottom: auto;
     border-radius: 32px;
-    max-width: 100%;
     max-height: 100vh;
   }
 `;

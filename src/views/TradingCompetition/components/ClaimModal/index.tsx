@@ -1,10 +1,9 @@
-import { AutoRenewIcon, Button, Flex, Heading, Modal, Text } from '@pancakeswap/uikit'
+import { AutoRenewIcon, Button, Flex, Heading, Modal, Text, useToast } from '@pancakeswap/uikit'
 import { ToastDescriptionWithTx } from 'components/Toast'
-import { useTranslation } from 'contexts/Localization'
-import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import { useTranslation } from '@pancakeswap/localization'
+import { useCallWithMarketGasPrice } from 'hooks/useCallWithMarketGasPrice'
 import useCatchTxError from 'hooks/useCatchTxError'
 import { useTradingCompetitionContractMoD } from 'hooks/useContract'
-import useToast from 'hooks/useToast'
 import Image from 'next/image'
 import styled from 'styled-components'
 import { modPrizes } from '../../../../config/constants/trading-competition/prizes'
@@ -23,7 +22,11 @@ const ImageWrapper = styled(Flex)`
   }
 `
 
-const ClaimModal: React.FC<CompetitionProps> = ({ onDismiss, onClaimSuccess, userTradingInformation }) => {
+const ClaimModal: React.FC<React.PropsWithChildren<CompetitionProps>> = ({
+  onDismiss,
+  onClaimSuccess,
+  userTradingInformation,
+}) => {
   const tradingCompetitionContract = useTradingCompetitionContractMoD()
   const canClaimSpecialNFT = useCanClaimSpecialNFT()
   const { toastSuccess } = useToast()
@@ -36,11 +39,11 @@ const ClaimModal: React.FC<CompetitionProps> = ({ onDismiss, onClaimSuccess, use
     userDarRewards,
   })
   const achievement = getRewardGroupAchievements(modPrizes, userRewardGroup, userPointReward)
-  const { callWithGasPrice } = useCallWithGasPrice()
+  const { callWithMarketGasPrice } = useCallWithMarketGasPrice()
 
   const handleClaimClick = async () => {
     const receipt = await fetchWithCatchTxError(() => {
-      return callWithGasPrice(tradingCompetitionContract, 'claimReward')
+      return callWithMarketGasPrice(tradingCompetitionContract, 'claimReward')
     })
     if (receipt?.status) {
       toastSuccess(t('You have claimed your rewards!'), <ToastDescriptionWithTx txHash={receipt.transactionHash} />)

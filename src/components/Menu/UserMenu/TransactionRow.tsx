@@ -1,11 +1,17 @@
-import { BlockIcon, CheckmarkCircleIcon, Flex, Link, OpenNewIcon, RefreshIcon } from '@pancakeswap/uikit'
+import { BlockIcon, CheckmarkCircleIcon, Flex, OpenNewIcon, RefreshIcon } from '@pancakeswap/uikit'
 import styled from 'styled-components'
+import { useAppDispatch } from 'state'
+import { useTranslation } from '@pancakeswap/localization'
 import { TransactionDetails } from 'state/transactions/reducer'
-import useActiveWeb3React from 'hooks/useActiveWeb3React'
-import { getBscScanLink } from 'utils'
+import { pickFarmTransactionTx } from 'state/global/actions'
+import { TransactionType, FarmTransactionStatus } from 'state/transactions/actions'
+import { getBlockExploreLink } from 'utils'
 
 interface TransactionRowProps {
   txn: TransactionDetails
+  chainId: number
+  type: TransactionType
+  onDismiss: () => void
 }
 
 const TxnIcon = styled(Flex)`
@@ -19,7 +25,8 @@ const Summary = styled.div`
   padding: 0 8px;
 `
 
-const TxnLink = styled(Link)`
+const TxnLink = styled.div`
+  cursor: pointer;
   align-items: center;
   color: ${({ theme }) => theme.colors.text};
   display: flex;
@@ -32,28 +39,45 @@ const TxnLink = styled(Link)`
 `
 
 const renderIcon = (txn: TransactionDetails) => {
-  if (!txn.receipt) {
+  const { receipt, nonBscFarm } = txn
+  if (!txn.receipt || nonBscFarm?.status === FarmTransactionStatus.PENDING) {
     return <RefreshIcon spin width="24px" />
   }
 
-  return txn.receipt?.status === 1 || typeof txn.receipt?.status === 'undefined' ? (
+  const isFarmStatusSuccess = nonBscFarm ? nonBscFarm.status === FarmTransactionStatus.SUCCESS : true
+  return (receipt?.status === 1 && isFarmStatusSuccess) || typeof receipt?.status === 'undefined' ? (
     <CheckmarkCircleIcon color="success" width="24px" />
   ) : (
     <BlockIcon color="failure" width="24px" />
   )
 }
 
-const TransactionRow: React.FC<TransactionRowProps> = ({ txn }) => {
-  const { chainId } = useActiveWeb3React()
+const TransactionRow: React.FC<React.PropsWithChildren<TransactionRowProps>> = ({ txn, chainId, type, onDismiss }) => {
+  const { t } = useTranslation()
+  const dispatch = useAppDispatch()
+
+  const onClickTransaction = () => {
+    if (type === 'non-bsc-farm') {
+      onDismiss()
+      dispatch(pickFarmTransactionTx({ tx: txn.hash, chainId }))
+    } else {
+      const url = getBlockExploreLink(txn.hash, 'transaction', chainId)
+      window.open(url, '_blank', 'noopener noreferrer')
+    }
+  }
 
   if (!txn) {
     return null
   }
 
   return (
-    <TxnLink href={getBscScanLink(txn.hash, 'transaction', chainId)} external>
+    <TxnLink onClick={onClickTransaction}>
       <TxnIcon>{renderIcon(txn)}</TxnIcon>
-      <Summary>{txn.summary ?? txn.hash}</Summary>
+      <Summary>
+        {txn.translatableSummary
+          ? t(txn.translatableSummary.text, txn.translatableSummary.data)
+          : txn.summary ?? txn.hash}
+      </Summary>
       <TxnIcon>
         <OpenNewIcon width="24px" color="primary" />
       </TxnIcon>

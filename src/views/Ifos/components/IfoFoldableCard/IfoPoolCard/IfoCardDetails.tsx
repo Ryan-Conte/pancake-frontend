@@ -1,11 +1,13 @@
 import { ReactNode } from 'react'
-import tokens from 'config/constants/tokens'
+import { bscTokens } from '@pancakeswap/tokens'
 import { Text, Flex, Box, Skeleton, TooltipText, useTooltip } from '@pancakeswap/uikit'
 import { PublicIfoData, WalletIfoData } from 'views/Ifos/types'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { Ifo, PoolIds } from 'config/constants/types'
+import BigNumber from 'bignumber.js'
 import { getBalanceNumber, formatNumber } from 'utils/formatBalance'
 import useBUSDPrice from 'hooks/useBUSDPrice'
+import { DAY_IN_SECONDS } from 'utils/getTimePeriods'
 import { multiplyPriceByAmount } from 'utils/prices'
 import { SkeletonCardDetails } from './Skeletons'
 
@@ -20,14 +22,26 @@ export interface IfoCardDetailsProps {
 export interface FooterEntryProps {
   label: ReactNode
   value: ReactNode
+  tooltipContent?: string
 }
 
-const FooterEntry: React.FC<FooterEntryProps> = ({ label, value }) => {
+const FooterEntry: React.FC<React.PropsWithChildren<FooterEntryProps>> = ({ label, value, tooltipContent }) => {
+  const { targetRef, tooltip, tooltipVisible } = useTooltip(tooltipContent, { placement: 'bottom-start' })
+
   return (
     <Flex justifyContent="space-between" alignItems="center">
-      <Text small color="textSubtle">
-        {label}
-      </Text>
+      {tooltipVisible && tooltip}
+      {tooltipContent ? (
+        <TooltipText ref={targetRef}>
+          <Text small color="textSubtle">
+            {label}
+          </Text>
+        </TooltipText>
+      ) : (
+        <Text small color="textSubtle">
+          {label}
+        </Text>
+      )}
       {value ? (
         <Text small textAlign="right">
           {value}
@@ -40,7 +54,7 @@ const FooterEntry: React.FC<FooterEntryProps> = ({ label, value }) => {
 }
 
 const MaxTokenEntry = ({ maxToken, ifo, poolId }: { maxToken: number; ifo: Ifo; poolId: PoolIds }) => {
-  const isCurrencyCake = ifo.currency === tokens.cake
+  const isCurrencyCake = ifo.currency === bscTokens.cake
   const isV3 = ifo.version >= 3
   const { t } = useTranslation()
 
@@ -103,7 +117,13 @@ const MaxTokenEntry = ({ maxToken, ifo, poolId }: { maxToken: number; ifo: Ifo; 
   )
 }
 
-const IfoCardDetails: React.FC<IfoCardDetailsProps> = ({ isEligible, poolId, ifo, publicIfoData, walletIfoData }) => {
+const IfoCardDetails: React.FC<React.PropsWithChildren<IfoCardDetailsProps>> = ({
+  isEligible,
+  poolId,
+  ifo,
+  publicIfoData,
+  walletIfoData,
+}) => {
   const { t } = useTranslation()
   const { status, currencyPriceInUSD } = publicIfoData
   const poolCharacteristic = publicIfoData[poolId]
@@ -139,23 +159,30 @@ const IfoCardDetails: React.FC<IfoCardDetailsProps> = ({ isEligible, poolId, ifo
   const totalCommitted = `~$${formatNumber(totalLPCommittedInUSD.toNumber(), 0, 0)} (${totalCommittedPercent}%)`
 
   const sumTaxesOverflow = poolCharacteristic.totalAmountPool.times(poolCharacteristic.taxRate).times(0.01)
+  const sumTaxesOverflowInUSD = currencyPriceInUSD.times(sumTaxesOverflow)
   const pricePerTokenWithFeeToOriginalRatio = sumTaxesOverflow
     .plus(poolCharacteristic.raisingAmountPool)
     .div(poolCharacteristic.offeringAmountPool)
     .div(poolCharacteristic.raisingAmountPool.div(poolCharacteristic.offeringAmountPool))
-  const pricePerTokenWithFee = `~$${formatNumber(
-    pricePerTokenWithFeeToOriginalRatio.times(ifo.tokenOfferingPrice).toNumber(),
-    0,
-    2,
-  )}`
+  const pricePerTokenWithFeeNumber = pricePerTokenWithFeeToOriginalRatio.times(ifo.tokenOfferingPrice).toNumber()
+  const maxPrecision = ifo.tokenOfferingPrice < 1 ? 4 : 2
+
+  const pricePerTokenWithFee = `~$${formatNumber(pricePerTokenWithFeeNumber, 0, maxPrecision)}`
+  const raisingTokenToBurn =
+    ifo[poolId].cakeToBurn ||
+    (sumTaxesOverflowInUSD.gt(0) &&
+      `${formatNumber(getBalanceNumber(sumTaxesOverflow), 0, 2)} (~$${formatNumber(
+        getBalanceNumber(sumTaxesOverflowInUSD),
+        0,
+        2,
+      )})`)
 
   const maxToken = ifo.version >= 3.1 && poolId === PoolIds.poolBasic && !isEligible ? 0 : maxLpTokens
 
   const tokenEntry = <MaxTokenEntry poolId={poolId} ifo={ifo} maxToken={maxToken} />
 
-  const oneWeek = 604800
-  const weeksInSeconds = ifo.version >= 3.2 ? poolCharacteristic.vestingInformation.duration : 0
-  const vestingWeeks = Math.ceil(weeksInSeconds / oneWeek)
+  const durationInSeconds = ifo.version >= 3.2 ? poolCharacteristic.vestingInformation.duration : 0
+  const vestingDays = Math.ceil(durationInSeconds / DAY_IN_SECONDS)
 
   /* Format end */
   const renderBasedOnIfoStatus = () => {
@@ -164,7 +191,7 @@ const IfoCardDetails: React.FC<IfoCardDetailsProps> = ({ isEligible, poolId, ifo
         <>
           {tokenEntry}
           <FooterEntry label={t('Funds to raise:')} value={ifo[poolId].raiseAmount} />
-          {ifo[poolId].cakeToBurn !== '$0' && <FooterEntry label={t('CAKE to burn:')} value={ifo[poolId].cakeToBurn} />}
+          {raisingTokenToBurn && <FooterEntry label={t('CAKE to burn:')} value={raisingTokenToBurn} />}
           <FooterEntry
             label={t('Price per %symbol%:', { symbol: ifo.token.symbol })}
             value={`$${ifo.tokenOfferingPrice}`}
@@ -190,13 +217,30 @@ const IfoCardDetails: React.FC<IfoCardDetailsProps> = ({ isEligible, poolId, ifo
             />
           )}
           <FooterEntry label={t('Total committed:')} value={currencyPriceInUSD.gt(0) ? totalCommitted : null} />
+          <FooterEntry label={t('Funds to raise:')} value={ifo[poolId].raiseAmount} />
+          {raisingTokenToBurn && <FooterEntry label={t('CAKE to burn:')} value={raisingTokenToBurn} />}
           {ifo.version >= 3.2 && poolCharacteristic.vestingInformation.percentage > 0 && (
             <>
               <FooterEntry
                 label={t('Vested percentage:')}
                 value={`${poolCharacteristic.vestingInformation.percentage}%`}
+                tooltipContent={t(
+                  '%percentageVested%% of the purchased token will get vested and released linearly over a period of time. %percentageTgeRelease%% of the purchased token will be released immediately and available for claiming when IFO ends.',
+                  {
+                    percentageVested: poolCharacteristic.vestingInformation.percentage,
+                    percentageTgeRelease: new BigNumber(100)
+                      .minus(poolCharacteristic.vestingInformation.percentage)
+                      .toString(),
+                  },
+                )}
               />
-              <FooterEntry label={t('Vesting schedule:')} value={`${vestingWeeks} weeks`} />
+              <FooterEntry
+                label={t('Vesting schedule:')}
+                value={`${vestingDays} days`}
+                tooltipContent={t('The vested tokens will be released linearly over a period of %days% days.', {
+                  days: vestingDays,
+                })}
+              />
             </>
           )}
         </>
@@ -210,7 +254,7 @@ const IfoCardDetails: React.FC<IfoCardDetailsProps> = ({ isEligible, poolId, ifo
           {poolId === PoolIds.poolUnlimited && <FooterEntry label={t('Additional fee:')} value={taxRate} />}
           <FooterEntry label={t('Total committed:')} value={currencyPriceInUSD.gt(0) ? totalCommitted : null} />
           <FooterEntry label={t('Funds to raise:')} value={ifo[poolId].raiseAmount} />
-          {ifo[poolId].cakeToBurn !== '$0' && <FooterEntry label={t('CAKE to burn:')} value={ifo[poolId].cakeToBurn} />}
+          {raisingTokenToBurn && <FooterEntry label={t('CAKE to burn:')} value={raisingTokenToBurn} />}
           {ifo.version > 1 && (
             <FooterEntry
               label={t('Price per %symbol%:', { symbol: ifo.token.symbol })}

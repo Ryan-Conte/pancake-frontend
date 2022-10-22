@@ -1,7 +1,7 @@
 import { Flex, Skeleton, useModal } from '@pancakeswap/uikit'
 import BigNumber from 'bignumber.js'
 import { DeserializedPool, VaultKey } from 'state/types'
-import NotEnoughTokensModal from '../../PoolCard/Modals/NotEnoughTokensModal'
+import NotEnoughTokensModal from '../../Modals/NotEnoughTokensModal'
 import { VaultStakeButtonGroup } from '../../Vault/VaultStakeButtonGroup'
 import VaultStakeModal from '../VaultStakeModal'
 import LockedStakeModal from '../../LockedPool/Modals/LockedStakeModal'
@@ -14,7 +14,7 @@ interface VaultStakeActionsProps {
   performanceFee: number
 }
 
-const VaultStakeActions: React.FC<VaultStakeActionsProps> = ({
+const VaultStakeActions: React.FC<React.PropsWithChildren<VaultStakeActionsProps>> = ({
   pool,
   stakingTokenBalance,
   accountHasSharesStaked,

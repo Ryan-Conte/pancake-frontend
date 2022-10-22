@@ -16,7 +16,7 @@ export const getProposals = async (first = 5, skip = 0, state = ProposalState.AC
           skip: $skip
           orderBy: "end"
           orderDirection: $orderDirection
-          where: { space_in: "cake.eth", state: $state }
+          where: { space_in: "cakevote.eth", state: $state }
         ) {
           id
           title
@@ -27,10 +27,6 @@ export const getProposals = async (first = 5, skip = 0, state = ProposalState.AC
           snapshot
           state
           author
-          space {
-            id
-            name
-          }
         }
       }
     `,
@@ -55,10 +51,6 @@ export const getProposal = async (id: string): Promise<Proposal> => {
           state
           author
           votes
-          space {
-            id
-            name
-          }
         }
       }
     `,
@@ -67,7 +59,7 @@ export const getProposal = async (id: string): Promise<Proposal> => {
   return response.proposal
 }
 
-const CHUNK_SIZE = 200
+const CHUNK_SIZE = 150
 export const getVotes = async (first: number, skip: number, where: VoteWhere): Promise<Vote[]> => {
   const response: { votes: Vote[] } = await request(
     SNAPSHOT_API,
@@ -78,10 +70,6 @@ export const getVotes = async (first: number, skip: number, where: VoteWhere): P
           voter
           created
           choice
-          space {
-            id
-            name
-          }
           proposal {
             choices
           }

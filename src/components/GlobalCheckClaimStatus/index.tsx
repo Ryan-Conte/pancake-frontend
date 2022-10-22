@@ -1,25 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from '@pancakeswap/localization'
+import { ChainId } from '@pancakeswap/sdk'
+import { useModal, useToast } from '@pancakeswap/uikit'
+import { useWeb3React } from '@pancakeswap/wagmi'
+import { ToastDescriptionWithTx } from 'components/Toast'
+import { useAnniversaryAchievementContract } from 'hooks/useContract'
+import useCatchTxError from 'hooks/useCatchTxError'
+import useActiveWeb3React from 'hooks/useActiveWeb3React'
 import { useRouter } from 'next/router'
-import { useModal } from '@pancakeswap/uikit'
-import { useWeb3React } from '@web3-react/core'
-import dynamic from 'next/dynamic'
-import request, { gql } from 'graphql-request'
-import { GALAXY_NFT_CAMPAIGN_ID } from 'config/constants'
-import { GALAXY_NFT_CLAIMING_API } from 'config/constants/endpoints'
-import { useERC721 } from 'hooks/useContract'
-
-const GalaxyNFTClaimModal = dynamic(() => import('./GalaxyNFTClaimModal'), { ssr: false })
+import { useEffect, useRef, useState } from 'react'
+import AnniversaryAchievementModal from './AnniversaryAchievementModal'
 
 interface GlobalCheckClaimStatusProps {
   excludeLocations: string[]
 }
 
 // change it to true if we have events to check claim status
-const enable = false
+const enable = true
 
-const GlobalCheckClaimStatus: React.FC<GlobalCheckClaimStatusProps> = (props) => {
-  const { account } = useWeb3React()
-  if (!enable) {
+const GlobalCheckClaimStatus: React.FC<React.PropsWithChildren<GlobalCheckClaimStatusProps>> = (props) => {
+  const { account, chainId } = useActiveWeb3React()
+  if (!enable || chainId !== ChainId.BSC) {
     return null
   }
   return <GlobalCheckClaim key={account} {...props} />
@@ -31,57 +31,48 @@ const GlobalCheckClaimStatus: React.FC<GlobalCheckClaimStatusProps> = (props) =>
  *
  * TODO: Put global checks in redux or make a generic area to house global checks
  */
-const GlobalCheckClaim: React.FC<GlobalCheckClaimStatusProps> = ({ excludeLocations }) => {
+const GlobalCheckClaim: React.FC<React.PropsWithChildren<GlobalCheckClaimStatusProps>> = ({ excludeLocations }) => {
   const hasDisplayedModal = useRef(false)
-  const [cid, setCid] = useState(null)
-  const [canClaimNFT, setCanClaimNFT] = useState(false)
-  const [nftBalance, setNftBalance] = useState(999) // default high to avoid flashing modal
-  const galaxyNFTContract = useERC721('0x2aD5745b7aD37037339EDe18407bf9395DE2d97F', false)
+  const { toastSuccess } = useToast()
+  const { t } = useTranslation()
+  const [canClaimAnniversaryPoints, setCanClaimAnniversaryPoints] = useState(false)
+  const { claimAnniversaryPoints } = useAnniversaryAchievementContract()
+  const { canClaim } = useAnniversaryAchievementContract(false)
+  const { fetchWithCatchTxError } = useCatchTxError()
+  const [onPresentAnniversaryModal] = useModal(
+    <AnniversaryAchievementModal
+      onClick={async () => {
+        const receipt = await fetchWithCatchTxError(() => claimAnniversaryPoints())
+        if (receipt?.status) {
+          toastSuccess(t('Success!'), <ToastDescriptionWithTx txHash={receipt.transactionHash} />)
+        }
+      }}
+    />,
+  )
+
   const { account } = useWeb3React()
   const { pathname } = useRouter()
-  const [onPresentModal] = useModal(<GalaxyNFTClaimModal cid={cid} />, false, true, 'galaxyNFTClaimModal')
-
   // Check claim status
   useEffect(() => {
-    const fetchClaimNftStatus = async () => {
-      try {
-        const { campaign } = await request(
-          GALAXY_NFT_CLAIMING_API,
-          gql`
-            query checkEligibilityForGalaxyNFT($campaignId: ID!, $address: String!) {
-              campaign(id: $campaignId) {
-                numberID
-                creds {
-                  eligible(address: $address)
-                }
-              }
-            }
-          `,
-          { campaignId: GALAXY_NFT_CAMPAIGN_ID, address: account },
-        )
-        const balance = await galaxyNFTContract.balanceOf(account)
-        setNftBalance(balance.toNumber())
-        setCanClaimNFT(campaign.creds[0].eligible === 1)
-        setCid(campaign.numberID)
-      } catch (error) {
-        console.error('checkEligibilityForGalaxyNFT failed', error)
-      }
+    const fetchClaimAnniversaryStatus = async () => {
+      const canClaimAnniversary = await canClaim(account)
+      setCanClaimAnniversaryPoints(canClaimAnniversary)
     }
 
     if (account) {
-      fetchClaimNftStatus()
+      fetchClaimAnniversaryStatus()
     }
-  }, [account, galaxyNFTContract])
+  }, [account, canClaim])
 
-  // Check if we need to display the modal
+  // // Check if we need to display the modal
   useEffect(() => {
     const matchesSomeLocations = excludeLocations.some((location) => pathname.includes(location))
 
-    if (canClaimNFT && !matchesSomeLocations && !hasDisplayedModal.current && nftBalance === 0) {
-      onPresentModal()
+    if (canClaimAnniversaryPoints && !matchesSomeLocations && !hasDisplayedModal.current) {
+      onPresentAnniversaryModal()
       hasDisplayedModal.current = true
     }
-  }, [pathname, excludeLocations, hasDisplayedModal, onPresentModal, canClaimNFT, nftBalance])
+  }, [pathname, excludeLocations, hasDisplayedModal, canClaim, canClaimAnniversaryPoints, onPresentAnniversaryModal])
 
   // Reset the check flag when account changes
   useEffect(() => {

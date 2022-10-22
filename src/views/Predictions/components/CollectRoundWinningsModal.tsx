@@ -1,37 +1,37 @@
-import { useEffect } from 'react'
-import styled from 'styled-components'
+import { Token } from '@pancakeswap/sdk'
 import {
-  ModalContainer,
-  ModalBody,
-  ModalTitle,
-  ModalHeader,
-  InjectedModalProps,
-  Button,
   AutoRenewIcon,
-  TrophyGoldIcon,
-  Text,
+  Box,
+  Button,
   Flex,
   Heading,
-  Box,
+  InjectedModalProps,
+  ModalBody,
   ModalCloseButton,
+  ModalContainer,
+  ModalHeader,
+  ModalTitle,
   Skeleton,
+  Text,
+  TrophyGoldIcon,
+  useToast,
 } from '@pancakeswap/uikit'
 import { AnyAction, AsyncThunkAction } from '@reduxjs/toolkit'
-import { Token } from '@pancakeswap/sdk'
+import { useEffect } from 'react'
+import styled from 'styled-components'
 
-import { useWeb3React } from '@web3-react/core'
-import { REWARD_RATE } from 'state/predictions/config'
-import { fetchNodeHistory, markAsCollected } from 'state/predictions'
-import { Bet } from 'state/types'
-import { useTranslation } from 'contexts/Localization'
-import useBUSDPrice from 'hooks/useBUSDPrice'
-import useToast from 'hooks/useToast'
-import { usePredictionsContract } from 'hooks/useContract'
-import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
-import useCatchTxError from 'hooks/useCatchTxError'
+import { useTranslation } from '@pancakeswap/localization'
+import { useWeb3React } from '@pancakeswap/wagmi'
 import { ToastDescriptionWithTx } from 'components/Toast'
-import { multiplyPriceByAmount } from 'utils/prices'
+import useBUSDPrice from 'hooks/useBUSDPrice'
+import { useCallWithMarketGasPrice } from 'hooks/useCallWithMarketGasPrice'
+import useCatchTxError from 'hooks/useCatchTxError'
+import { usePredictionsContract } from 'hooks/useContract'
+import { fetchNodeHistory, markAsCollected } from 'state/predictions'
+import { REWARD_RATE } from 'state/predictions/config'
+import { Bet } from 'state/types'
 import { formatNumber } from 'utils/formatBalance'
+import { multiplyPriceByAmount } from 'utils/prices'
 import { getPayout } from './History/helpers'
 
 interface CollectRoundWinningsModalProps extends InjectedModalProps {
@@ -83,7 +83,7 @@ const calculateClaimableRounds = (history): ClaimableRounds => {
   )
 }
 
-const CollectRoundWinningsModal: React.FC<CollectRoundWinningsModalProps> = ({
+const CollectRoundWinningsModal: React.FC<React.PropsWithChildren<CollectRoundWinningsModalProps>> = ({
   onDismiss,
   onSuccess,
   history,
@@ -97,7 +97,7 @@ const CollectRoundWinningsModal: React.FC<CollectRoundWinningsModalProps> = ({
   const { t } = useTranslation()
   const { toastSuccess } = useToast()
   const { fetchWithCatchTxError, loading: isPendingTx } = useCatchTxError()
-  const { callWithGasPrice } = useCallWithGasPrice()
+  const { callWithMarketGasPrice } = useCallWithMarketGasPrice()
   const predictionsContract = usePredictionsContract(predictionsAddress, token.symbol)
   const bnbBusdPrice = useBUSDPrice(token)
 
@@ -115,7 +115,7 @@ const CollectRoundWinningsModal: React.FC<CollectRoundWinningsModalProps> = ({
 
   const handleClick = async () => {
     const receipt = await fetchWithCatchTxError(() => {
-      return callWithGasPrice(predictionsContract, 'claim', [epochs])
+      return callWithMarketGasPrice(predictionsContract, 'claim', [epochs])
     })
     if (receipt?.status) {
       if (!isV1Claim) {
@@ -129,9 +129,7 @@ const CollectRoundWinningsModal: React.FC<CollectRoundWinningsModalProps> = ({
         )
       }
 
-      if (onSuccess) {
-        await onSuccess()
-      }
+      await onSuccess?.()
 
       toastSuccess(
         t('Winnings collected!'),
@@ -144,7 +142,7 @@ const CollectRoundWinningsModal: React.FC<CollectRoundWinningsModalProps> = ({
   }
 
   return (
-    <Modal minWidth="288px" position="relative" mt="124px">
+    <Modal $minWidth="288px" position="relative" mt="124px">
       <BunnyDecoration>
         <img src="/images/decorations/prize-bunny.png" alt="bunny decoration" height="124px" width="168px" />
       </BunnyDecoration>

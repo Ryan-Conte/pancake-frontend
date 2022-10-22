@@ -1,12 +1,13 @@
 import React, { useCallback } from 'react'
-import { Currency, CurrencyAmount, Fraction, Percent, Token, TokenAmount } from '@pancakeswap/sdk'
+import { Currency, CurrencyAmount, Fraction, Percent, Token } from '@pancakeswap/sdk'
 import { InjectedModalProps, Button } from '@pancakeswap/uikit'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import TransactionConfirmationModal, {
   ConfirmationModalContent,
   TransactionErrorContent,
 } from 'components/TransactionConfirmationModal'
 import { Field } from 'state/burn/actions'
+import _toNumber from 'lodash/toNumber'
 import { AddLiquidityModalHeader, PairDistribution } from './common'
 
 interface ConfirmAddLiquidityModalProps {
@@ -20,14 +21,17 @@ interface ConfirmAddLiquidityModalProps {
   allowedSlippage: number
   liquidityErrorMessage: string
   price: Fraction
-  parsedAmounts: { [field in Field]?: CurrencyAmount }
+  parsedAmounts: { [field in Field]?: CurrencyAmount<Currency> }
   onAdd: () => void
   poolTokenPercentage: Percent
-  liquidityMinted: TokenAmount
+  liquidityMinted: CurrencyAmount<Token>
   currencyToAdd: Token
+  isStable?: boolean
 }
 
-const ConfirmAddLiquidityModal: React.FC<InjectedModalProps & ConfirmAddLiquidityModalProps> = ({
+const ConfirmAddLiquidityModal: React.FC<
+  React.PropsWithChildren<InjectedModalProps & ConfirmAddLiquidityModalProps>
+> = ({
   title,
   onDismiss,
   customOnDismiss,
@@ -44,8 +48,19 @@ const ConfirmAddLiquidityModal: React.FC<InjectedModalProps & ConfirmAddLiquidit
   poolTokenPercentage,
   liquidityMinted,
   currencyToAdd,
+  isStable,
 }) => {
   const { t } = useTranslation()
+
+  let percent = 0.5
+
+  // Calculate distribution percentage for display
+  if (isStable && parsedAmounts[Field.CURRENCY_A] && parsedAmounts[Field.CURRENCY_B]) {
+    const amountCurrencyA = _toNumber(parsedAmounts[Field.CURRENCY_A].toSignificant(6))
+    const amountCurrencyB = _toNumber(parsedAmounts[Field.CURRENCY_B].toSignificant(6))
+
+    percent = amountCurrencyA / (amountCurrencyA + amountCurrencyB)
+  }
 
   const modalHeader = useCallback(() => {
     return (
@@ -59,7 +74,7 @@ const ConfirmAddLiquidityModal: React.FC<InjectedModalProps & ConfirmAddLiquidit
       >
         <PairDistribution
           title={t('Input')}
-          percent={0.5}
+          percent={percent}
           currencyA={currencies[Field.CURRENCY_A]}
           currencyAValue={parsedAmounts[Field.CURRENCY_A]?.toSignificant(6)}
           currencyB={currencies[Field.CURRENCY_B]}
@@ -67,7 +82,7 @@ const ConfirmAddLiquidityModal: React.FC<InjectedModalProps & ConfirmAddLiquidit
         />
       </AddLiquidityModalHeader>
     )
-  }, [allowedSlippage, currencies, liquidityMinted, noLiquidity, parsedAmounts, poolTokenPercentage, price, t])
+  }, [allowedSlippage, percent, currencies, liquidityMinted, noLiquidity, parsedAmounts, poolTokenPercentage, price, t])
 
   const modalBottom = useCallback(() => {
     return (

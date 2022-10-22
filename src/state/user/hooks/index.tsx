@@ -1,13 +1,17 @@
 import { ChainId, Pair, Token } from '@pancakeswap/sdk'
+import { deserializeToken } from '@pancakeswap/tokens'
 import { differenceInDays } from 'date-fns'
 import flatMap from 'lodash/flatMap'
-import farms from 'config/constants/farms'
+import { getFarmConfig } from '@pancakeswap/farms/constants'
 import { useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
-import { CHAIN_ID } from 'config/constants/networks'
-import { BASES_TO_TRACK_LIQUIDITY_FOR, PINNED_PAIRS } from 'config/constants'
+import { BASES_TO_TRACK_LIQUIDITY_FOR, PINNED_PAIRS } from 'config/constants/exchange'
 import useActiveWeb3React from 'hooks/useActiveWeb3React'
+import useSWRImmutable from 'swr/immutable'
+import { useFeeData } from 'wagmi'
 import { useOfficialsAndUserAddedTokens } from 'hooks/Tokens'
+import { useWeb3LibraryContext } from '@pancakeswap/wagmi'
+import useSWR from 'swr'
 import { AppState, useAppDispatch } from '../../index'
 import {
   addSerializedPair,
@@ -22,7 +26,6 @@ import {
   updateUserFarmStakedOnly,
   updateUserSingleHopOnly,
   updateUserSlippageTolerance,
-  updateGasPrice,
   addWatchlistToken,
   addWatchlistPool,
   updateUserPoolStakedOnly,
@@ -42,7 +45,6 @@ import {
   updateUserLimitOrderAcceptedWarning,
   setZapDisabled,
 } from '../actions'
-import { deserializeToken, serializeToken } from './helpers'
 import { GAS_PRICE_GWEI } from '../../types'
 
 export function useAudioModeManager(): [boolean, () => void] {
@@ -385,7 +387,7 @@ export function useAddUserToken(): (token: Token) => void {
   const dispatch = useAppDispatch()
   return useCallback(
     (token: Token) => {
-      dispatch(addSerializedToken({ serializedToken: serializeToken(token) }))
+      dispatch(addSerializedToken({ serializedToken: token.serialize }))
     },
     [dispatch],
   )
@@ -401,30 +403,42 @@ export function useRemoveUserAddedToken(): (chainId: number, address: string) =>
   )
 }
 
-export function useGasPrice(): string {
-  const chainId = CHAIN_ID
-  const userGas = useSelector<AppState, AppState['user']['gasPrice']>((state) => state.user.gasPrice)
-  return chainId === ChainId.MAINNET.toString() ? userGas : GAS_PRICE_GWEI.testnet
-}
-
-export function useGasPriceManager(): [string, (userGasPrice: string) => void] {
-  const dispatch = useAppDispatch()
-  const userGasPrice = useGasPrice()
-
-  const setGasPrice = useCallback(
-    (gasPrice: string) => {
-      dispatch(updateGasPrice({ gasPrice }))
+export function useGasPrice(chainIdOverride?: number): string {
+  const { chainId: chainId_, chain } = useActiveWeb3React()
+  const library = useWeb3LibraryContext()
+  const chainId = chainIdOverride ?? chainId_
+  const { data: bscProviderGasPrice = GAS_PRICE_GWEI.default } = useSWR(
+    library && library.provider && chainId === ChainId.BSC && ['bscProviderGasPrice', library.provider],
+    async () => {
+      const gasPrice = await library.getGasPrice()
+      return gasPrice.toString()
     },
-    [dispatch],
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+    },
   )
-
-  return [userGasPrice, setGasPrice]
+  const { data } = useFeeData({
+    chainId,
+    enabled: chainId !== ChainId.BSC && chainId !== ChainId.BSC_TESTNET,
+    watch: true,
+  })
+  if (chainId === ChainId.BSC) {
+    return bscProviderGasPrice
+  }
+  if (chainId === ChainId.BSC_TESTNET) {
+    return GAS_PRICE_GWEI.testnet
+  }
+  if (chain?.testnet) {
+    return data?.formatted?.maxPriorityFeePerGas
+  }
+  return data?.formatted?.gasPrice
 }
 
 function serializePair(pair: Pair): SerializedPair {
   return {
-    token0: serializeToken(pair.token0),
-    token1: serializeToken(pair.token1),
+    token0: pair.token0.serialize,
+    token1: pair.token1.serialize,
   }
 }
 
@@ -458,13 +472,15 @@ export function useTrackedTokenPairs(): [Token, Token][] {
   // pinned pairs
   const pinnedPairs = useMemo(() => (chainId ? PINNED_PAIRS[chainId] ?? [] : []), [chainId])
 
-  const farmPairs: [Token, Token][] = useMemo(
-    () =>
-      farms
-        .filter((farm) => farm.pid !== 0)
-        .map((farm) => [deserializeToken(farm.token), deserializeToken(farm.quoteToken)]),
-    [],
-  )
+  const { data: farmPairs = [] } = useSWRImmutable(chainId && ['track-farms-pairs', chainId], async () => {
+    const farms = await getFarmConfig(chainId)
+
+    const fPairs: [Token, Token][] = farms
+      .filter((farm) => farm.pid !== 0)
+      .map((farm) => [deserializeToken(farm.token), deserializeToken(farm.quoteToken)])
+
+    return fPairs
+  })
 
   // pairs for every token against every base
   const generatedPairs: [Token, Token][] = useMemo(

@@ -1,32 +1,29 @@
-import { useState } from 'react'
-import { useWeb3React } from '@web3-react/core'
-import { Flex, Button, Text, AutoRenewIcon, PresentWonIcon } from '@pancakeswap/uikit'
-import { useTranslation } from 'contexts/Localization'
-import { LotteryTicket, LotteryTicketClaimData } from 'config/constants/types'
-import { getBalanceAmount } from 'utils/formatBalance'
-import { callWithEstimateGas } from 'utils/calls'
-import { usePriceCakeBusd } from 'state/farms/hooks'
-import { useLottery } from 'state/lottery/hooks'
-import { fetchUserLotteries } from 'state/lottery'
-import { useGasPrice } from 'state/user/hooks'
-import { useAppDispatch } from 'state'
+import { useTranslation } from '@pancakeswap/localization'
+import { AutoRenewIcon, Button, Flex, PresentWonIcon, Text, useToast } from '@pancakeswap/uikit'
+import { useWeb3React } from '@pancakeswap/wagmi'
 import Balance from 'components/Balance'
 import { ToastDescriptionWithTx } from 'components/Toast'
-import useToast from 'hooks/useToast'
+import { LotteryTicket, LotteryTicketClaimData } from 'config/constants/types'
 import useCatchTxError from 'hooks/useCatchTxError'
 import { useLotteryV2Contract } from 'hooks/useContract'
+import { useState } from 'react'
+import { useAppDispatch } from 'state'
+import { usePriceCakeBusd } from 'state/farms/hooks'
+import { fetchUserLotteries } from 'state/lottery'
+import { useLottery } from 'state/lottery/hooks'
+import { callWithEstimateGas } from 'utils/calls'
+import { getBalanceAmount } from 'utils/formatBalance'
 
 interface ClaimInnerProps {
   roundsToClaim: LotteryTicketClaimData[]
   onSuccess?: () => void
 }
 
-const ClaimInnerContainer: React.FC<ClaimInnerProps> = ({ onSuccess, roundsToClaim }) => {
+const ClaimInnerContainer: React.FC<React.PropsWithChildren<ClaimInnerProps>> = ({ onSuccess, roundsToClaim }) => {
   const { account } = useWeb3React()
   const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const { maxNumberTicketsPerBuyOrClaim, currentLotteryId } = useLottery()
-  const gasPrice = useGasPrice()
   const { toastSuccess } = useToast()
   const { fetchWithCatchTxError, loading: pendingTx } = useCatchTxError()
   const [activeClaimIndex, setActiveClaimIndex] = useState(0)
@@ -87,9 +84,7 @@ const ClaimInnerContainer: React.FC<ClaimInnerProps> = ({ onSuccess, roundsToCla
   const handleClaim = async () => {
     const { lotteryId, ticketIds, brackets } = claimTicketsCallData
     const receipt = await fetchWithCatchTxError(() => {
-      return callWithEstimateGas(lotteryContract, 'claimTickets', [lotteryId, ticketIds, brackets], {
-        gasPrice,
-      })
+      return callWithEstimateGas(lotteryContract, 'claimTickets', [lotteryId, ticketIds, brackets])
     })
     if (receipt?.status) {
       toastSuccess(
@@ -111,12 +106,11 @@ const ClaimInnerContainer: React.FC<ClaimInnerProps> = ({ onSuccess, roundsToCla
     for (const ticketBatch of ticketBatches) {
       /* eslint-disable no-await-in-loop */
       const receipt = await fetchWithCatchTxError(() => {
-        return callWithEstimateGas(
-          lotteryContract,
-          'claimTickets',
-          [lotteryId, ticketBatch.ticketIds, ticketBatch.brackets],
-          { gasPrice },
-        )
+        return callWithEstimateGas(lotteryContract, 'claimTickets', [
+          lotteryId,
+          ticketBatch.ticketIds,
+          ticketBatch.brackets,
+        ])
       })
       if (receipt?.status) {
         // One transaction within batch has succeeded

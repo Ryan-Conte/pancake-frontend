@@ -1,23 +1,22 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useContext, useEffect, useState } from 'react'
-import { Button, useModal } from '@pancakeswap/uikit'
-import { ContextApi } from 'contexts/Localization/types'
-import { ToastDescriptionWithTx } from 'components/Toast'
 import { BigNumber } from '@ethersproject/bignumber'
 import { MaxUint256 } from '@ethersproject/constants'
+import { ContextApi } from '@pancakeswap/localization'
+import { Button, useModal, useToast } from '@pancakeswap/uikit'
+import { ToastDescriptionWithTx } from 'components/Toast'
 import useApproveConfirmTransaction from 'hooks/useApproveConfirmTransaction'
-import { useCallWithGasPrice } from 'hooks/useCallWithGasPrice'
+import { useCallWithMarketGasPrice } from 'hooks/useCallWithMarketGasPrice'
 import { useCake, useNftSaleContract } from 'hooks/useContract'
-import useToast from 'hooks/useToast'
+import { useContext, useEffect, useState } from 'react'
 import { DefaultTheme } from 'styled-components'
 import { requiresApproval } from 'utils/requiresApproval'
 import { PancakeSquadContext } from 'views/PancakeSquad/context'
 import { SaleStatusEnum, UserStatusEnum } from '../../types'
+import ReadyText from '../Header/ReadyText'
 import BuyTicketsModal from '../Modals/BuyTickets'
 import ConfirmModal from '../Modals/Confirm'
-import ReadyText from '../Header/ReadyText'
-import { getBuyButton, getBuyButtonText } from './utils'
 import { BuyButtonsEnum } from './types'
+import { getBuyButton, getBuyButtonText } from './utils'
 
 type BuyTicketsProps = {
   t: ContextApi['t']
@@ -36,7 +35,7 @@ type BuyTicketsProps = {
   startTimestamp: number
 }
 
-const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
+const BuyTicketsButtons: React.FC<React.PropsWithChildren<BuyTicketsProps>> = ({
   t,
   account,
   saleStatus,
@@ -54,7 +53,7 @@ const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
 }) => {
   const [txHashEnablingResult, setTxHashEnablingResult] = useState(null)
   const [txHashBuyingResult, setTxHashBuyingResult] = useState(null)
-  const { callWithGasPrice } = useCallWithGasPrice()
+  const { callWithMarketGasPrice } = useCallWithMarketGasPrice()
   const nftSaleContract = useNftSaleContract()
   const { toastSuccess } = useToast()
   const { reader: cakeContractReader, signer: cakeContractApprover } = useCake()
@@ -74,7 +73,7 @@ const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
         return requiresApproval(cakeContractReader, account, nftSaleContract.address)
       },
       onApprove: () => {
-        return callWithGasPrice(cakeContractApprover, 'approve', [nftSaleContract.address, MaxUint256])
+        return callWithMarketGasPrice(cakeContractApprover, 'approve', [nftSaleContract.address, MaxUint256])
       },
       onApproveSuccess: async ({ receipt }) => {
         toastSuccess(t('Transaction has succeeded!'), <ToastDescriptionWithTx txHash={receipt.transactionHash} />)
@@ -82,7 +81,7 @@ const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
       },
       onConfirm: ({ ticketsNumber }) => {
         onPresentConfirmModal()
-        return callWithGasPrice(nftSaleContract, isPreSale ? 'buyTicketsInPreSaleForGen0' : 'buyTickets', [
+        return callWithMarketGasPrice(nftSaleContract, isPreSale ? 'buyTicketsInPreSaleForGen0' : 'buyTickets', [
           ticketsNumber,
         ])
       },
@@ -100,7 +99,7 @@ const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
     <ConfirmModal
       title={t('Confirm')}
       isLoading={isConfirming}
-      headerBackground={theme.colors.gradients.cardHeader}
+      headerBackground={theme.colors.gradientCardHeader}
       txHash={txHashBuyingResult}
       loadingText={t('Please confirm your transaction in wallet.')}
       loadingButtonLabel={t('Confirming...')}
@@ -114,7 +113,7 @@ const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
     <ConfirmModal
       title={t('Enable')}
       isLoading={isApproving}
-      headerBackground={theme.colors.gradients.cardHeader}
+      headerBackground={theme.colors.gradientCardHeader}
       txHash={txHashEnablingResult}
       loadingText={t('Please enable CAKE spending in your wallet')}
       loadingButtonLabel={t('Enabling...')}
@@ -128,7 +127,7 @@ const BuyTicketsButtons: React.FC<BuyTicketsProps> = ({
     <BuyTicketsModal
       title={t('Buy Minting Tickets')}
       buyTicketCallBack={handleConfirm}
-      headerBackground={theme.colors.gradients.cardHeader}
+      headerBackground={theme.colors.gradientCardHeader}
       cakeBalance={cakeBalance}
       maxPerAddress={maxPerAddress}
       maxPerTransaction={maxPerTransaction}

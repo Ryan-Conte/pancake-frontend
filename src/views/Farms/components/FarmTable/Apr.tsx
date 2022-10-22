@@ -4,6 +4,7 @@ import BigNumber from 'bignumber.js'
 import { BASE_ADD_LIQUIDITY_URL } from 'config'
 import getLiquidityUrlPathParts from 'utils/getLiquidityUrlPathParts'
 import { Skeleton } from '@pancakeswap/uikit'
+import useActiveWeb3React from 'hooks/useActiveWeb3React'
 
 export interface AprProps {
   value: string
@@ -11,11 +12,16 @@ export interface AprProps {
   pid: number
   lpLabel: string
   lpSymbol: string
+  lpRewardsApr: number
+  lpTokenPrice: BigNumber
   tokenAddress?: string
   quoteTokenAddress?: string
   cakePrice: BigNumber
   originalValue: number
   hideButton?: boolean
+  strikethrough?: boolean
+  useTooltipText?: boolean
+  boosted?: boolean
 }
 
 const Container = styled.div`
@@ -40,21 +46,26 @@ const AprWrapper = styled.div`
   text-align: left;
 `
 
-const Apr: React.FC<AprProps> = ({
+const Apr: React.FC<React.PropsWithChildren<AprProps>> = ({
   value,
   pid,
   lpLabel,
   lpSymbol,
+  lpTokenPrice,
   multiplier,
   tokenAddress,
   quoteTokenAddress,
   cakePrice,
   originalValue,
   hideButton = false,
+  strikethrough,
+  lpRewardsApr,
+  useTooltipText = true,
+  boosted,
 }) => {
-  const liquidityUrlPathParts = getLiquidityUrlPathParts({ quoteTokenAddress, tokenAddress })
+  const { chainId } = useActiveWeb3React()
+  const liquidityUrlPathParts = getLiquidityUrlPathParts({ quoteTokenAddress, tokenAddress, chainId })
   const addLiquidityUrl = `${BASE_ADD_LIQUIDITY_URL}/${liquidityUrlPathParts}`
-
   return originalValue !== 0 ? (
     <Container>
       {originalValue ? (
@@ -63,11 +74,17 @@ const Apr: React.FC<AprProps> = ({
           pid={pid}
           lpSymbol={lpSymbol}
           lpLabel={lpLabel}
+          lpTokenPrice={lpTokenPrice}
           multiplier={multiplier}
           cakePrice={cakePrice}
           apr={originalValue}
           displayApr={value}
+          lpRewardsApr={lpRewardsApr}
           addLiquidityUrl={addLiquidityUrl}
+          strikethrough={strikethrough}
+          useTooltipText={useTooltipText}
+          hideButton={hideButton}
+          boosted={boosted}
         />
       ) : (
         <AprWrapper>

@@ -1,11 +1,12 @@
-import { Currency, Pair, Token } from '@pancakeswap/sdk'
-import { Button, ChevronDownIcon, Text, useModal, Flex, Box, MetamaskIcon } from '@pancakeswap/uikit'
+import { Currency, Pair } from '@pancakeswap/sdk'
+import { Button, ChevronDownIcon, Text, useModal, Flex, Box } from '@pancakeswap/uikit'
 import styled, { css } from 'styled-components'
-import { registerToken } from 'utils/wallet'
 import { isAddress } from 'utils'
-import { useTranslation } from 'contexts/Localization'
-import { WrappedTokenInfo } from 'state/types'
+import { useTranslation } from '@pancakeswap/localization'
+import { WrappedTokenInfo } from '@pancakeswap/tokens'
 import useActiveWeb3React from 'hooks/useActiveWeb3React'
+import { StablePair } from 'views/AddLiquidity/AddStableLiquidity/hooks/useStableLPDerivedMintInfo'
+
 import { useBUSDCurrencyAmount } from 'hooks/useBUSDPrice'
 import { formatNumber } from 'utils/formatBalance'
 import { useCurrencyBalance } from '../../state/wallet/hooks'
@@ -14,6 +15,7 @@ import { CurrencyLogo, DoubleCurrencyLogo } from '../Logo'
 
 import { Input as NumericalInput } from './NumericalInput'
 import { CopyButton } from '../CopyButton'
+import AddToWalletButton from '../AddToWallet/AddToWalletButton'
 
 const InputRow = styled.div<{ selected: boolean }>`
   display: flex;
@@ -75,17 +77,20 @@ interface CurrencyInputPanelProps {
   value: string
   onUserInput: (value: string) => void
   onInputBlur?: () => void
+  onPercentInput?: (percent: number) => void
   onMax?: () => void
+  showQuickInputButton?: boolean
   showMaxButton: boolean
   label?: string
   onCurrencySelect?: (currency: Currency) => void
   currency?: Currency | null
   disableCurrencySelect?: boolean
   hideBalance?: boolean
-  pair?: Pair | null
+  pair?: Pair | StablePair | null
   otherCurrency?: Currency | null
   id: string
   showCommonBases?: boolean
+  commonBasesType?: string
   zapStyle?: ZapStyle
   beforeButton?: React.ReactNode
   disabled?: boolean
@@ -96,7 +101,9 @@ export default function CurrencyInputPanel({
   value,
   onUserInput,
   onInputBlur,
+  onPercentInput,
   onMax,
+  showQuickInputButton = false,
   showMaxButton,
   label,
   onCurrencySelect,
@@ -109,18 +116,16 @@ export default function CurrencyInputPanel({
   otherCurrency,
   id,
   showCommonBases,
+  commonBasesType,
   disabled,
   error,
   showBUSD,
 }: CurrencyInputPanelProps) {
-  const { account, library } = useActiveWeb3React()
+  const { account } = useActiveWeb3React()
   const selectedCurrencyBalance = useCurrencyBalance(account ?? undefined, currency ?? undefined)
-  const {
-    t,
-    currentLanguage: { locale },
-  } = useTranslation()
+  const { t } = useTranslation()
 
-  const token = pair ? pair.liquidityToken : currency instanceof Token ? currency : null
+  const token = pair ? pair.liquidityToken : currency?.isToken ? currency : null
   const tokenAddress = token ? isAddress(token.address) : null
 
   const amountInDollar = useBUSDCurrencyAmount(
@@ -134,6 +139,7 @@ export default function CurrencyInputPanel({
       selectedCurrency={currency}
       otherSelectedCurrency={otherCurrency}
       showCommonBases={showCommonBases}
+      commonBasesType={commonBasesType}
     />,
   )
 
@@ -186,20 +192,16 @@ export default function CurrencyInputPanel({
                 tooltipRight={40}
                 tooltipFontSize={12}
               />
-              {library?.provider?.isMetaMask && (
-                <MetamaskIcon
-                  style={{ cursor: 'pointer' }}
-                  width="16px"
-                  onClick={() =>
-                    registerToken(
-                      tokenAddress,
-                      token.symbol,
-                      token.decimals,
-                      token instanceof WrappedTokenInfo ? token.logoURI : undefined,
-                    )
-                  }
-                />
-              )}
+              <AddToWalletButton
+                variant="text"
+                p="0"
+                height="auto"
+                width="fit-content"
+                tokenAddress={tokenAddress}
+                tokenSymbol={token.symbol}
+                tokenDecimals={token.decimals}
+                tokenLogo={token instanceof WrappedTokenInfo ? token.logoURI : undefined}
+              />
             </Flex>
           ) : null}
         </Flex>
@@ -236,10 +238,39 @@ export default function CurrencyInputPanel({
                 ~{formatNumber(amountInDollar)} USD
               </Text>
             )}
-            {account && currency && !disabled && showMaxButton && label !== 'To' && (
-              <Button onClick={onMax} scale="xs" variant="secondary">
-                {t('Max').toLocaleUpperCase(locale)}
-              </Button>
+            {account && currency && selectedCurrencyBalance?.greaterThan(0) && !disabled && label !== 'To' && (
+              <Flex alignItems="right" justifyContent="right">
+                {showQuickInputButton &&
+                  onPercentInput &&
+                  [25, 50, 75].map((percent) => (
+                    <Button
+                      key={`btn_quickCurrency${percent}`}
+                      onClick={() => {
+                        onPercentInput(percent)
+                      }}
+                      scale="xs"
+                      mr="5px"
+                      variant="secondary"
+                      style={{ textTransform: 'uppercase' }}
+                    >
+                      {percent}%
+                    </Button>
+                  ))}
+                {showMaxButton && (
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      onMax?.()
+                    }}
+                    scale="xs"
+                    variant="secondary"
+                    style={{ textTransform: 'uppercase' }}
+                  >
+                    {t('Max')}
+                  </Button>
+                )}
+              </Flex>
             )}
           </InputRow>
         </Container>

@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice, PayloadAction, isAnyOf } from '@reduxjs/toolkit'
 import BigNumber from 'bignumber.js'
+import fromPairs from 'lodash/fromPairs'
 import poolsConfig from 'config/constants/pools'
 import {
   PoolsState,
@@ -16,10 +17,11 @@ import { BIG_ZERO } from 'utils/bigNumber'
 import cakeAbi from 'config/abi/cake.json'
 import { getCakeVaultAddress, getCakeFlexibleSideVaultAddress } from 'utils/addressHelpers'
 import { multicallv2 } from 'utils/multicall'
-import tokens from 'config/constants/tokens'
+import { bscTokens } from '@pancakeswap/tokens'
+import { isAddress } from 'utils'
 import { getBalanceNumber } from 'utils/formatBalance'
-import { simpleRpcProvider } from 'utils/providers'
-import priceHelperLpsConfig from 'config/constants/priceHelperLps'
+import { bscRpcProvider } from 'utils/providers'
+import { getPoolsPriceHelperLpFiles } from 'config/constants/priceHelperLps/index'
 import fetchFarms from '../farms/fetchFarms'
 import getFarmsPrices from '../farms/getFarmsPrices'
 import {
@@ -89,10 +91,10 @@ export const fetchCakePoolPublicDataAsync = () => async (dispatch, getState) => 
 
   const cakePool = poolsConfig.filter((p) => p.sousId === 0)[0]
 
-  const stakingTokenAddress = cakePool.stakingToken.address ? cakePool.stakingToken.address.toLowerCase() : null
+  const stakingTokenAddress = isAddress(cakePool.stakingToken.address)
   const stakingTokenPrice = stakingTokenAddress ? prices[stakingTokenAddress] : 0
 
-  const earningTokenAddress = cakePool.earningToken.address ? cakePool.earningToken.address.toLowerCase() : null
+  const earningTokenAddress = isAddress(cakePool.earningToken.address)
   const earningTokenPrice = earningTokenAddress ? prices[earningTokenAddress] : 0
 
   dispatch(
@@ -108,17 +110,17 @@ export const fetchCakePoolPublicDataAsync = () => async (dispatch, getState) => 
 
 export const fetchCakePoolUserDataAsync = (account: string) => async (dispatch) => {
   const allowanceCall = {
-    address: tokens.cake.address,
+    address: bscTokens.cake.address,
     name: 'allowance',
     params: [account, cakeVaultAddress],
   }
   const balanceOfCall = {
-    address: tokens.cake.address,
+    address: bscTokens.cake.address,
     name: 'balanceOf',
     params: [account],
   }
   const cakeContractCalls = [allowanceCall, balanceOfCall]
-  const [[allowance], [stakingTokenBalance]] = await multicallv2(cakeAbi, cakeContractCalls)
+  const [[allowance], [stakingTokenBalance]] = await multicallv2({ abi: cakeAbi, calls: cakeContractCalls })
 
   dispatch(
     setPoolUserData({
@@ -131,79 +133,87 @@ export const fetchCakePoolUserDataAsync = (account: string) => async (dispatch) 
   )
 }
 
-export const fetchPoolsPublicDataAsync = (currentBlockNumber: number) => async (dispatch, getState) => {
-  try {
-    const [blockLimits, totalStakings, profileRequirements, currentBlock] = await Promise.all([
-      fetchPoolsBlockLimits(),
-      fetchPoolsTotalStaking(),
-      fetchPoolsProfileRequirement(),
-      currentBlockNumber ? Promise.resolve(currentBlockNumber) : simpleRpcProvider.getBlockNumber(),
-    ])
+export const fetchPoolsPublicDataAsync =
+  (currentBlockNumber: number, chainId: number) => async (dispatch, getState) => {
+    try {
+      const [blockLimits, totalStakings, profileRequirements, currentBlock] = await Promise.all([
+        fetchPoolsBlockLimits(),
+        fetchPoolsTotalStaking(),
+        fetchPoolsProfileRequirement(),
+        currentBlockNumber ? Promise.resolve(currentBlockNumber) : bscRpcProvider.getBlockNumber(),
+      ])
 
-    const activePriceHelperLpsConfig = priceHelperLpsConfig.filter((priceHelperLpConfig) => {
-      return (
-        poolsConfig
-          .filter((pool) => pool.earningToken.address.toLowerCase() === priceHelperLpConfig.token.address.toLowerCase())
-          .filter((pool) => {
-            const poolBlockLimit = blockLimits.find((blockLimit) => blockLimit.sousId === pool.sousId)
-            if (poolBlockLimit) {
-              return poolBlockLimit.endBlock > currentBlock
-            }
-            return false
-          }).length > 0
-      )
-    })
-    const poolsWithDifferentFarmToken =
-      activePriceHelperLpsConfig.length > 0 ? await fetchFarms(priceHelperLpsConfig) : []
-    const farmsData = getState().farms.data
-    const bnbBusdFarm =
-      activePriceHelperLpsConfig.length > 0
-        ? farmsData.find((farm) => farm.token.symbol === 'BUSD' && farm.quoteToken.symbol === 'WBNB')
-        : null
-    const farmsWithPricesOfDifferentTokenPools = bnbBusdFarm
-      ? getFarmsPrices([bnbBusdFarm, ...poolsWithDifferentFarmToken])
-      : []
+      const blockLimitsSousIdMap = fromPairs(blockLimits.map((entry) => [entry.sousId, entry]))
+      const totalStakingsSousIdMap = fromPairs(totalStakings.map((entry) => [entry.sousId, entry]))
 
-    const prices = getTokenPricesFromFarm([...farmsData, ...farmsWithPricesOfDifferentTokenPools])
+      const priceHelperLpsConfig = getPoolsPriceHelperLpFiles(chainId)
+      const activePriceHelperLpsConfig = priceHelperLpsConfig.filter((priceHelperLpConfig) => {
+        return (
+          poolsConfig
+            .filter(
+              (pool) => pool.earningToken.address.toLowerCase() === priceHelperLpConfig.token.address.toLowerCase(),
+            )
+            .filter((pool) => {
+              const poolBlockLimit = blockLimitsSousIdMap[pool.sousId]
+              if (poolBlockLimit) {
+                return poolBlockLimit.endBlock > currentBlock
+              }
+              return false
+            }).length > 0
+        )
+      })
+      const poolsWithDifferentFarmToken =
+        activePriceHelperLpsConfig.length > 0 ? await fetchFarms(priceHelperLpsConfig, chainId) : []
+      const farmsData = getState().farms.data
+      const bnbBusdFarm =
+        activePriceHelperLpsConfig.length > 0
+          ? farmsData.find((farm) => farm.token.symbol === 'BUSD' && farm.quoteToken.symbol === 'WBNB')
+          : null
+      const farmsWithPricesOfDifferentTokenPools = bnbBusdFarm
+        ? getFarmsPrices([bnbBusdFarm, ...poolsWithDifferentFarmToken], chainId)
+        : []
 
-    const liveData = poolsConfig.map((pool) => {
-      const blockLimit = blockLimits.find((entry) => entry.sousId === pool.sousId)
-      const totalStaking = totalStakings.find((entry) => entry.sousId === pool.sousId)
-      const isPoolEndBlockExceeded = currentBlock > 0 && blockLimit ? currentBlock > Number(blockLimit.endBlock) : false
-      const isPoolFinished = pool.isFinished || isPoolEndBlockExceeded
+      const prices = getTokenPricesFromFarm([...farmsData, ...farmsWithPricesOfDifferentTokenPools])
 
-      const stakingTokenAddress = pool.stakingToken.address ? pool.stakingToken.address.toLowerCase() : null
-      const stakingTokenPrice = stakingTokenAddress ? prices[stakingTokenAddress] : 0
+      const liveData = poolsConfig.map((pool) => {
+        const blockLimit = blockLimitsSousIdMap[pool.sousId]
+        const totalStaking = totalStakingsSousIdMap[pool.sousId]
+        const isPoolEndBlockExceeded =
+          currentBlock > 0 && blockLimit ? currentBlock > Number(blockLimit.endBlock) : false
+        const isPoolFinished = pool.isFinished || isPoolEndBlockExceeded
 
-      const earningTokenAddress = pool.earningToken.address ? pool.earningToken.address.toLowerCase() : null
-      const earningTokenPrice = earningTokenAddress ? prices[earningTokenAddress] : 0
-      const apr = !isPoolFinished
-        ? getPoolApr(
-            stakingTokenPrice,
-            earningTokenPrice,
-            getBalanceNumber(new BigNumber(totalStaking.totalStaked), pool.stakingToken.decimals),
-            parseFloat(pool.tokenPerBlock),
-          )
-        : 0
+        const stakingTokenAddress = isAddress(pool.stakingToken.address)
+        const stakingTokenPrice = stakingTokenAddress ? prices[stakingTokenAddress] : 0
 
-      const profileRequirement = profileRequirements[pool.sousId] ? profileRequirements[pool.sousId] : undefined
+        const earningTokenAddress = isAddress(pool.earningToken.address)
+        const earningTokenPrice = earningTokenAddress ? prices[earningTokenAddress] : 0
+        const apr = !isPoolFinished
+          ? getPoolApr(
+              stakingTokenPrice,
+              earningTokenPrice,
+              getBalanceNumber(new BigNumber(totalStaking.totalStaked), pool.stakingToken.decimals),
+              parseFloat(pool.tokenPerBlock),
+            )
+          : 0
 
-      return {
-        ...blockLimit,
-        ...totalStaking,
-        profileRequirement,
-        stakingTokenPrice,
-        earningTokenPrice,
-        apr,
-        isFinished: isPoolFinished,
-      }
-    })
+        const profileRequirement = profileRequirements[pool.sousId] ? profileRequirements[pool.sousId] : undefined
 
-    dispatch(setPoolsPublicData(liveData))
-  } catch (error) {
-    console.error('[Pools Action] error when getting public data', error)
+        return {
+          ...blockLimit,
+          ...totalStaking,
+          profileRequirement,
+          stakingTokenPrice,
+          earningTokenPrice,
+          apr,
+          isFinished: isPoolFinished,
+        }
+      })
+
+      dispatch(setPoolsPublicData(liveData))
+    } catch (error) {
+      console.error('[Pools Action] error when getting public data', error)
+    }
   }
-}
 
 export const fetchPoolsStakingLimitsAsync = () => async (dispatch, getState) => {
   const poolsWithStakingLimit = getState()
@@ -372,8 +382,9 @@ export const PoolsSlice = createSlice({
     },
     setPoolsPublicData: (state, action) => {
       const livePoolsData: SerializedPool[] = action.payload
+      const livePoolsSousIdMap = fromPairs(livePoolsData.map((entry) => [entry.sousId, entry]))
       state.data = state.data.map((pool) => {
-        const livePoolData = livePoolsData.find((entry) => entry.sousId === pool.sousId)
+        const livePoolData = livePoolsSousIdMap[pool.sousId]
         return { ...pool, ...livePoolData }
       })
     },
@@ -402,10 +413,12 @@ export const PoolsSlice = createSlice({
         >,
       ) => {
         const userData = action.payload
-        state.data = state.data.map((pool) => {
-          const userPoolData = userData.find((entry) => entry.sousId === pool.sousId)
-          return { ...pool, userDataLoaded: true, userData: userPoolData }
-        })
+        const userDataSousIdMap = fromPairs(userData.map((entry) => [entry.sousId, entry]))
+        state.data = state.data.map((pool) => ({
+          ...pool,
+          userDataLoaded: true,
+          userData: userDataSousIdMap[pool.sousId],
+        }))
         state.userDataLoaded = true
       },
     )

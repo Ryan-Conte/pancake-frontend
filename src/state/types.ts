@@ -1,57 +1,20 @@
-import BigNumber from 'bignumber.js'
 import { BigNumber as EthersBigNumber } from '@ethersproject/bignumber'
+import { parseUnits } from '@ethersproject/units'
+import { SerializedFarmPublicData } from '@pancakeswap/farms'
+import { Token } from '@pancakeswap/sdk'
+import BigNumber from 'bignumber.js'
 import {
   CampaignType,
-  SerializedFarmConfig,
+  DeserializedFarmConfig,
+  DeserializedPoolConfig,
+  FetchStatus,
   LotteryStatus,
   LotteryTicket,
-  DeserializedPoolConfig,
   SerializedPoolConfig,
   Team,
   TranslatableText,
-  DeserializedFarmConfig,
-  FetchStatus,
 } from 'config/constants/types'
-import { Token, ChainId } from '@pancakeswap/sdk'
-import { TokenInfo, TokenList, Tags } from '@uniswap/token-lists'
-import { parseUnits } from '@ethersproject/units'
-import { NftToken, State as NftMarketState } from './nftMarket/types'
-
-/**
- * Token instances created from token info.
- */
-export class WrappedTokenInfo extends Token {
-  public readonly tokenInfo: TokenInfo
-
-  public readonly tags: TagInfo[]
-
-  constructor(tokenInfo: TokenInfo, tags: TagInfo[]) {
-    super(tokenInfo.chainId, tokenInfo.address, tokenInfo.decimals, tokenInfo.symbol, tokenInfo.name)
-    this.tokenInfo = tokenInfo
-    this.tags = tags
-  }
-
-  public get logoURI(): string | undefined {
-    return this.tokenInfo.logoURI
-  }
-}
-
-export type TokenAddressMap = Readonly<{
-  [chainId in ChainId]: Readonly<{ [tokenAddress: string]: { token: WrappedTokenInfo; list: TokenList } }>
-}>
-
-type TagDetails = Tags[keyof Tags]
-export interface TagInfo extends TagDetails {
-  id: string
-}
-
-/**
- * An empty result, useful as a default.
- */
-export const EMPTY_LIST: TokenAddressMap = {
-  [ChainId.MAINNET]: {},
-  [ChainId.TESTNET]: {},
-}
+import { NftToken } from './nftMarket/types'
 
 export enum GAS_PRICE {
   default = '5',
@@ -82,6 +45,12 @@ interface SerializedFarmUserData {
   tokenBalance: string
   stakedBalance: string
   earnings: string
+  proxy?: {
+    allowance: string
+    tokenBalance: string
+    stakedBalance: string
+    earnings: string
+  }
 }
 
 export interface DeserializedFarmUserData {
@@ -89,17 +58,15 @@ export interface DeserializedFarmUserData {
   tokenBalance: BigNumber
   stakedBalance: BigNumber
   earnings: BigNumber
+  proxy?: {
+    allowance: BigNumber
+    tokenBalance: BigNumber
+    stakedBalance: BigNumber
+    earnings: BigNumber
+  }
 }
 
-export interface SerializedFarm extends SerializedFarmConfig {
-  tokenPriceBusd?: string
-  quoteTokenPriceBusd?: string
-  tokenAmountTotal?: SerializedBigNumber
-  quoteTokenAmountTotal?: SerializedBigNumber
-  lpTotalInQuoteToken?: SerializedBigNumber
-  lpTotalSupply?: SerializedBigNumber
-  tokenPriceVsQuote?: SerializedBigNumber
-  poolWeight?: SerializedBigNumber
+export interface SerializedFarm extends SerializedFarmPublicData {
   userData?: SerializedFarmUserData
 }
 
@@ -110,9 +77,12 @@ export interface DeserializedFarm extends DeserializedFarmConfig {
   quoteTokenAmountTotal?: BigNumber
   lpTotalInQuoteToken?: BigNumber
   lpTotalSupply?: BigNumber
+  lpTokenPrice?: BigNumber
   tokenPriceVsQuote?: BigNumber
   poolWeight?: BigNumber
   userData?: DeserializedFarmUserData
+  boosted?: boolean
+  isStable?: boolean
 }
 
 export enum VaultKey {
@@ -182,6 +152,7 @@ export interface Profile {
 
 export interface SerializedFarmsState {
   data: SerializedFarm[]
+  chainId?: number
   loadArchivedFarmsData: boolean
   userDataLoaded: boolean
   loadingKeys: Record<string, boolean>
@@ -243,6 +214,7 @@ export interface DeserializedLockedVaultUser extends DeserializedVaultUser {
   lastUserActionTime: string
   lockStartTime: string
   lockEndTime: string
+  burnStartTime: string
   userBoostedShare: BigNumber
   locked: boolean
   lockedAmount: BigNumber
@@ -537,11 +509,6 @@ export enum ProposalState {
   CLOSED = 'closed',
 }
 
-export interface Space {
-  id: string
-  name: string
-}
-
 export interface Proposal {
   author: string
   body: string
@@ -549,7 +516,6 @@ export interface Proposal {
   end: number
   id: string
   snapshot: string
-  space: Space
   votes: number
   start: number
   state: ProposalState
@@ -560,7 +526,6 @@ export interface Vote {
   id: string
   voter: string
   created: number
-  space: Space
   proposal: {
     choices: Proposal['choices']
   }
@@ -648,7 +613,92 @@ export interface PredictionConfig {
   api: string
   chainlinkOracleAddress: string
   minPriceUsdDisplayed: EthersBigNumber
+  displayedDecimals: number
   token: Token
+}
+
+// Pottery
+export interface PotteryState {
+  lastVaultAddress: string
+  publicData: SerializedPotteryPublicData
+  userData: SerializedPotteryUserData
+  finishedRoundInfo: PotteryRoundInfo
+}
+
+export interface SerializedPotteryPublicData {
+  lastDrawId: string
+  totalPrize: string
+  getStatus: PotteryDepositStatus
+  totalLockCake: string
+  totalSupply: string
+  lockStartTime: string
+  lockTime: number
+  totalLockedValue: string
+  latestRoundId: string
+  maxTotalDeposit: string
+}
+
+export interface DeserializedPublicData {
+  lastDrawId: string
+  totalPrize: BigNumber
+  getStatus: PotteryDepositStatus
+  totalLockCake: BigNumber
+  totalSupply: BigNumber
+  lockStartTime: string
+  lockTime: number
+  totalLockedValue: BigNumber
+  latestRoundId: string
+  maxTotalDeposit: BigNumber
+}
+
+export interface SerializedPotteryUserData {
+  isLoading?: boolean
+  allowance: string
+  previewDepositBalance: string
+  stakingTokenBalance: string
+  rewards: string
+  winCount: string
+  withdrawAbleData: PotteryWithdrawAbleData[]
+}
+
+export interface DeserializedPotteryUserData {
+  isLoading?: boolean
+  allowance: BigNumber
+  previewDepositBalance: BigNumber
+  stakingTokenBalance: BigNumber
+  rewards: BigNumber
+  winCount: string
+  withdrawAbleData: PotteryWithdrawAbleData[]
+}
+
+export interface PotteryRoundInfo {
+  isFetched: boolean
+  roundId: string
+  drawDate: string
+  prizePot: string
+  totalPlayers: string
+  txid: string
+  winners: Array<string>
+  lockDate: string
+}
+
+export enum PotteryDepositStatus {
+  BEFORE_LOCK = 0,
+  LOCK = 1,
+  UNLOCK = 2,
+}
+
+export interface PotteryWithdrawAbleData {
+  id: string
+  shares: string
+  depositDate: string
+  previewRedeem: string
+  status: PotteryDepositStatus
+  potteryVaultAddress: string
+  totalSupply: string
+  totalLockCake: string
+  lockedDate: string
+  balanceOf: string
 }
 
 // Global state
@@ -659,5 +709,5 @@ export interface State {
   pools: PoolsState
   predictions: PredictionsState
   lottery: LotteryState
-  nftMarket: NftMarketState
+  pottery: PotteryState
 }

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ResponsiveContainer, XAxis, YAxis, Tooltip, AreaChart, Area, Dot } from 'recharts'
 import useTheme from 'hooks/useTheme'
 import { LineChartLoader } from 'views/Info/components/ChartLoaders'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { laggyMiddleware, useSWRContract, useSWRMulticall } from 'hooks/useSWRContract'
 import useSWRImmutable from 'swr/immutable'
 import { useSWRConfig } from 'swr'
@@ -83,15 +83,6 @@ type ChartData = {
   startedAt: number
 }
 
-const HoverUpdater = ({ payload }) => {
-  const mutate = useChartHoverMutate()
-  useEffect(() => {
-    mutate(payload)
-  }, [mutate, payload])
-
-  return null
-}
-
 function useChartHover() {
   const { data } = useSWRImmutable<ChartData>('chainlinkChartHover')
   return data
@@ -116,7 +107,7 @@ const ChainlinkChartWrapper = styled(Flex)<{ isMobile?: boolean }>`
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: ${({ theme, isMobile }) => (isMobile ? theme.card.background : theme.colors.gradients.bubblegum)};
+  background: ${({ theme, isMobile }) => (isMobile ? theme.card.background : theme.colors.gradientBubblegum)};
 `
 
 const HoverData = ({ rounds }: { rounds: { [key: string]: NodeRound } }) => {
@@ -256,7 +247,10 @@ const Chart = ({
         <Tooltip
           cursor={{ stroke: theme.colors.textSubtle, strokeDasharray: '3 3' }}
           contentStyle={{ display: 'none' }}
-          formatter={(_, __, props) => <HoverUpdater payload={props.payload} />}
+          formatter={(tooltipValue, name, props) => {
+            mutate(props.payload)
+            return null
+          }}
         />
         <Area
           dataKey="answer"

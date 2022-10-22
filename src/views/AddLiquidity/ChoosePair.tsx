@@ -1,12 +1,18 @@
 import { Currency } from '@pancakeswap/sdk'
-import { Box, Text, AddIcon, CardBody, Button, CardFooter } from '@pancakeswap/uikit'
+import { Box, Text, AddIcon, CardBody, CardFooter, TooltipText, useTooltip } from '@pancakeswap/uikit'
+import { CommitButton } from 'components/CommitButton'
 import { CurrencySelect } from 'components/CurrencySelect'
 import ConnectWalletButton from 'components/ConnectWalletButton'
 import { FlexGap } from 'components/Layout/Flex'
-import { useTranslation } from 'contexts/Localization'
+import { useLPApr } from 'state/swap/hooks'
+import { RowBetween } from 'components/Layout/Row'
+import { useTranslation } from '@pancakeswap/localization'
 import useActiveWeb3React from 'hooks/useActiveWeb3React'
+import { usePair } from 'hooks/usePairs'
+import { formatAmount } from 'utils/formatInfoNumbers'
 import { AppHeader } from '../../components/App'
 import { useCurrencySelectRoute } from './useCurrencySelectRoute'
+import { CommonBasesType } from '../../components/SearchModal/types'
 
 export function ChoosePair({
   currencyA,
@@ -23,6 +29,14 @@ export function ChoosePair({
   const { account } = useActiveWeb3React()
   const isValid = !error
   const { handleCurrencyASelect, handleCurrencyBSelect } = useCurrencySelectRoute()
+  const [, pair] = usePair(currencyA, currencyB)
+  const poolData = useLPApr(pair)
+  const { targetRef, tooltip, tooltipVisible } = useTooltip(
+    t(`Based on last 7 days' performance. Does not account for impermanent loss`),
+    {
+      placement: 'bottom',
+    },
+  )
 
   return (
     <>
@@ -45,6 +59,7 @@ export function ChoosePair({
               selectedCurrency={currencyA}
               onCurrencySelect={handleCurrencyASelect}
               showCommonBases
+              commonBasesType={CommonBasesType.LIQUIDITY}
             />
             <AddIcon color="textSubtle" />
             <CurrencySelect
@@ -52,15 +67,27 @@ export function ChoosePair({
               selectedCurrency={currencyB}
               onCurrencySelect={handleCurrencyBSelect}
               showCommonBases
+              commonBasesType={CommonBasesType.LIQUIDITY}
             />
           </FlexGap>
+          {pair && poolData && (
+            <RowBetween mt="24px">
+              <TooltipText ref={targetRef} bold fontSize="12px" color="secondary">
+                {t('LP reward APR')}
+              </TooltipText>
+              {tooltipVisible && tooltip}
+              <Text bold color="primary">
+                {formatAmount(poolData.lpApr7d)}%
+              </Text>
+            </RowBetween>
+          )}
         </Box>
       </CardBody>
       <CardFooter>
         {!account ? (
           <ConnectWalletButton width="100%" />
         ) : (
-          <Button
+          <CommitButton
             data-test="choose-pair-next"
             width="100%"
             variant={!isValid ? 'danger' : 'primary'}
@@ -68,7 +95,7 @@ export function ChoosePair({
             disabled={!isValid}
           >
             {error ?? t('Add Liquidity')}
-          </Button>
+          </CommitButton>
         )}
       </CardFooter>
     </>

@@ -10,12 +10,12 @@ import {
   useModal,
   CardRibbon,
   BunnyPlaceholderIcon,
-  useMatchBreakpointsContext,
+  useMatchBreakpoints,
 } from '@pancakeswap/uikit'
 import { LotteryRound } from 'state/types'
 import { useGetUserLotteriesGraphData, useLottery } from 'state/lottery/hooks'
 import { LotteryStatus } from 'config/constants/types'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import WinningNumbers from '../WinningNumbers'
 import ViewTicketsModal from '../ViewTicketsModal'
 
@@ -47,10 +47,9 @@ const StyledCardRibbon = styled(CardRibbon)`
   }
 `
 
-const PreviousRoundCardBody: React.FC<{ lotteryNodeData: LotteryRound; lotteryId: string }> = ({
-  lotteryNodeData,
-  lotteryId,
-}) => {
+const PreviousRoundCardBody: React.FC<
+  React.PropsWithChildren<{ lotteryNodeData: LotteryRound; lotteryId: string }>
+> = ({ lotteryNodeData, lotteryId }) => {
   const { t } = useTranslation()
   const {
     currentLotteryId,
@@ -58,7 +57,7 @@ const PreviousRoundCardBody: React.FC<{ lotteryNodeData: LotteryRound; lotteryId
   } = useLottery()
   const userLotteryData = useGetUserLotteriesGraphData()
   const userDataForRound = userLotteryData.rounds.find((userLotteryRound) => userLotteryRound.lotteryId === lotteryId)
-  const { isLg, isXl, isXxl } = useMatchBreakpointsContext()
+  const { isLg, isXl, isXxl } = useMatchBreakpoints()
   const isLargerScreen = isLg || isXl || isXxl
 
   const currentLotteryIdAsInt = parseInt(currentLotteryId)

@@ -1,16 +1,19 @@
 // TODO PCS refactor ternaries
 /* eslint-disable no-nested-ternary */
-import { useCallback, useState, useMemo, useEffect, Fragment } from 'react'
-import styled from 'styled-components'
-import { formatDistanceToNowStrict } from 'date-fns'
-import { Text, Flex, Box, Radio, Skeleton, LinkExternal, ArrowForwardIcon, ArrowBackIcon } from '@pancakeswap/uikit'
-import { formatAmount } from 'utils/formatInfoNumbers'
-import { getBscScanLink } from 'utils'
-import truncateHash from 'utils/truncateHash'
-import { Transaction, TransactionType } from 'state/info/types'
+import { useTranslation } from '@pancakeswap/localization'
+import { ChainId } from '@pancakeswap/sdk'
+import truncateHash from '@pancakeswap/utils/truncateHash'
+import { ArrowBackIcon, ArrowForwardIcon, Box, Flex, LinkExternal, Radio, Skeleton, Text } from '@pancakeswap/uikit'
 import { ITEMS_PER_INFO_TABLE_PAGE } from 'config/constants/info'
-import { useTranslation } from 'contexts/Localization'
-import { ClickableColumnHeader, TableWrapper, PageButtons, Arrow, Break } from './shared'
+import { formatDistanceToNowStrict } from 'date-fns'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useGetChainName } from 'state/info/hooks'
+import { Transaction, TransactionType } from 'state/info/types'
+import styled from 'styled-components'
+import { getBlockExploreLink } from 'utils'
+
+import { formatAmount } from 'utils/formatInfoNumbers'
+import { Arrow, Break, ClickableColumnHeader, PageButtons, TableWrapper } from './shared'
 
 const Wrapper = styled.div`
   width: 100%;
@@ -72,7 +75,7 @@ const SORT_FIELD = {
   amountToken1: 'amountToken1',
 }
 
-const TableLoader: React.FC = () => {
+const TableLoader: React.FC<React.PropsWithChildren> = () => {
   const loadingRow = (
     <ResponsiveGrid>
       <Skeleton />
@@ -92,16 +95,18 @@ const TableLoader: React.FC = () => {
   )
 }
 
-const DataRow: React.FC<{ transaction: Transaction }> = ({ transaction }) => {
+const DataRow: React.FC<React.PropsWithChildren<{ transaction: Transaction }>> = ({ transaction }) => {
   const { t } = useTranslation()
   const abs0 = Math.abs(transaction.amountToken0)
   const abs1 = Math.abs(transaction.amountToken1)
   const outputTokenSymbol = transaction.amountToken0 < 0 ? transaction.token0Symbol : transaction.token1Symbol
   const inputTokenSymbol = transaction.amountToken1 < 0 ? transaction.token0Symbol : transaction.token1Symbol
-
+  const chainName = useGetChainName()
   return (
     <ResponsiveGrid>
-      <LinkExternal href={getBscScanLink(transaction.hash, 'transaction')}>
+      <LinkExternal
+        href={getBlockExploreLink(transaction.hash, 'transaction', chainName === 'ETH' && ChainId.ETHEREUM)}
+      >
         <Text>
           {transaction.type === TransactionType.MINT
             ? t('Add %token0% and %token1%', { token0: transaction.token0Symbol, token1: transaction.token1Symbol })
@@ -117,7 +122,7 @@ const DataRow: React.FC<{ transaction: Transaction }> = ({ transaction }) => {
       <Text>
         <Text>{`${formatAmount(abs1)} ${transaction.token1Symbol}`}</Text>
       </Text>
-      <LinkExternal href={getBscScanLink(transaction.sender, 'address')}>
+      <LinkExternal href={getBlockExploreLink(transaction.sender, 'address', chainName === 'ETH' && ChainId.ETHEREUM)}>
         {truncateHash(transaction.sender)}
       </LinkExternal>
       <Text>{formatDistanceToNowStrict(parseInt(transaction.timestamp, 10) * 1000)}</Text>
@@ -125,9 +130,11 @@ const DataRow: React.FC<{ transaction: Transaction }> = ({ transaction }) => {
   )
 }
 
-const TransactionTable: React.FC<{
-  transactions: Transaction[]
-}> = ({ transactions }) => {
+const TransactionTable: React.FC<
+  React.PropsWithChildren<{
+    transactions: Transaction[]
+  }>
+> = ({ transactions }) => {
   const [sortField, setSortField] = useState(SORT_FIELD.timestamp)
   const [sortDirection, setSortDirection] = useState<boolean>(true)
 

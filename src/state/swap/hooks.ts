@@ -1,5 +1,5 @@
-import { Currency, CurrencyAmount, Trade } from '@pancakeswap/sdk'
-import { useWeb3React } from '@web3-react/core'
+import { useWeb3React } from '@pancakeswap/wagmi'
+import { ChainId, Currency, CurrencyAmount, Pair, Trade, TradeType } from '@pancakeswap/sdk'
 import { ParsedUrlQuery } from 'querystring'
 import { useEffect, useMemo, useState } from 'react'
 import { SLOW_INTERVAL } from 'config/constants'
@@ -9,16 +9,18 @@ import { useDispatch, useSelector } from 'react-redux'
 import useActiveWeb3React from 'hooks/useActiveWeb3React'
 import { useTradeExactIn, useTradeExactOut } from 'hooks/Trades'
 import { useRouter } from 'next/router'
-import { useTranslation } from 'contexts/Localization'
+import { useTranslation } from '@pancakeswap/localization'
 import { isAddress } from 'utils'
 import { getDeltaTimestamps } from 'utils/getDeltaTimestamps'
 import { getBlocksFromTimestamps } from 'utils/getBlocksFromTimestamps'
 import { getChangeForPeriod } from 'utils/getChangeForPeriod'
 import { getLpFeesAndApr } from 'utils/getLpFeesAndApr'
+import useNativeCurrency from 'hooks/useNativeCurrency'
 import { computeSlippageAdjustedAmounts } from 'utils/exchange'
+import { CAKE, USDC } from '@pancakeswap/tokens'
 import getLpAddress from 'utils/getLpAddress'
 import { getTokenAddress } from 'views/Swap/components/Chart/utils'
-import tryParseAmount from 'utils/tryParseAmount'
+import tryParseAmount from '@pancakeswap/utils/tryParseAmount'
 import { AppState, useAppDispatch } from '../index'
 import { useCurrencyBalances } from '../wallet/hooks'
 import { Field, replaceSwapState, updateDerivedPairData, updatePairData } from './actions'
@@ -35,12 +37,13 @@ import { PairDataTimeWindowEnum } from './types'
 import { derivedPairByDataIdSelector, pairByDataIdSelector } from './selectors'
 import fetchDerivedPriceData from './fetch/fetchDerivedPriceData'
 import { pairHasEnoughLiquidity } from './fetch/utils'
-import { parsePoolData, fetchPoolData, FormattedPoolFields } from '../info/queries/pools/poolData'
+import { fetchPoolData } from '../info/queries/pools/poolData'
 
 export function useSwapState(): AppState['swap'] {
   return useSelector<AppState, AppState['swap']>((state) => state.swap)
 }
 
+// TODO: update
 const BAD_RECIPIENT_ADDRESSES: string[] = [
   '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f', // v2 factory
   '0xf164fC0Ec4E93095b804a4795bBe1e041497b92a', // v2 router 01
@@ -52,7 +55,7 @@ const BAD_RECIPIENT_ADDRESSES: string[] = [
  * @param trade to check for the given address
  * @param checksummedAddress address to check in the pairs and tokens
  */
-function involvesAddress(trade: Trade, checksummedAddress: string): boolean {
+function involvesAddress(trade: Trade<Currency, Currency, TradeType>, checksummedAddress: string): boolean {
   return (
     trade.route.path.some((token) => token.address === checksummedAddress) ||
     trade.route.pairs.some((pair) => pair.liquidityToken.address === checksummedAddress)
@@ -94,9 +97,9 @@ export function useDerivedSwapInfo(
   recipient: string,
 ): {
   currencies: { [field in Field]?: Currency }
-  currencyBalances: { [field in Field]?: CurrencyAmount }
-  parsedAmount: CurrencyAmount | undefined
-  v2Trade: Trade | undefined
+  currencyBalances: { [field in Field]?: CurrencyAmount<Currency> }
+  parsedAmount: CurrencyAmount<Currency> | undefined
+  v2Trade: Trade<Currency, Currency, TradeType> | undefined
   inputError?: string
 } {
   const { account } = useWeb3React()
@@ -174,16 +177,6 @@ export function useDerivedSwapInfo(
   }
 }
 
-function parseCurrencyFromURLParameter(urlParam: any): string {
-  if (typeof urlParam === 'string') {
-    const valid = isAddress(urlParam)
-    if (valid) return valid
-    if (urlParam.toUpperCase() === 'BNB') return 'BNB'
-    if (valid === false) return 'BNB'
-  }
-  return ''
-}
-
 function parseTokenAmountURLParameter(urlParam: any): string {
   return typeof urlParam === 'string' && !Number.isNaN(parseFloat(urlParam)) ? urlParam : ''
 }
@@ -201,9 +194,16 @@ function validatedRecipient(recipient: any): string | null {
   return null
 }
 
-export function queryParametersToSwapState(parsedQs: ParsedUrlQuery): SwapState {
-  let inputCurrency = parseCurrencyFromURLParameter(parsedQs.inputCurrency) || DEFAULT_INPUT_CURRENCY
-  let outputCurrency = parseCurrencyFromURLParameter(parsedQs.outputCurrency) || DEFAULT_OUTPUT_CURRENCY
+export function queryParametersToSwapState(
+  parsedQs: ParsedUrlQuery,
+  nativeSymbol?: string,
+  defaultOutputCurrency?: string,
+): SwapState {
+  let inputCurrency = isAddress(parsedQs.inputCurrency) || (nativeSymbol ?? DEFAULT_INPUT_CURRENCY)
+  let outputCurrency =
+    typeof parsedQs.outputCurrency === 'string'
+      ? isAddress(parsedQs.outputCurrency) || nativeSymbol
+      : defaultOutputCurrency ?? DEFAULT_OUTPUT_CURRENCY
   if (inputCurrency === outputCurrency) {
     if (typeof parsedQs.outputCurrency === 'string') {
       inputCurrency = ''
@@ -235,14 +235,15 @@ export function useDefaultsFromURLSearch():
   | undefined {
   const { chainId } = useActiveWeb3React()
   const dispatch = useAppDispatch()
+  const native = useNativeCurrency()
   const { query } = useRouter()
   const [result, setResult] = useState<
     { inputCurrencyId: string | undefined; outputCurrencyId: string | undefined } | undefined
   >()
 
   useEffect(() => {
-    if (!chainId) return
-    const parsed = queryParametersToSwapState(query)
+    if (!chainId || !native) return
+    const parsed = queryParametersToSwapState(query, native.symbol, CAKE[chainId]?.address ?? USDC[chainId]?.address)
 
     dispatch(
       replaceSwapState({
@@ -255,7 +256,7 @@ export function useDefaultsFromURLSearch():
     )
 
     setResult({ inputCurrencyId: parsed[Field.INPUT].currencyId, outputCurrencyId: parsed[Field.OUTPUT].currencyId })
-  }, [dispatch, chainId, query])
+  }, [dispatch, chainId, query, native])
 
   return result
 }
@@ -397,30 +398,27 @@ export const useFetchPairPrices = ({
   return { pairPrices, pairId }
 }
 
-export const useLPApr = (pair) => {
+export const useLPApr = (pair?: Pair) => {
   const { data: poolData } = useSWRImmutable(
-    pair ? ['LP7dApr', pair.liquidityToken.address] : null,
+    pair && pair.chainId === ChainId.BSC ? ['LP7dApr', pair.liquidityToken.address] : null,
     async () => {
       const timestampsArray = getDeltaTimestamps()
       const blocks = await getBlocksFromTimestamps(timestampsArray, 'desc', 1000)
       const [block24h, block48h, block7d, block14d] = blocks ?? []
+      const lowerCasedAddress = pair.liquidityToken.address.toLowerCase()
       const { error, data } = await fetchPoolData(block24h.number, block48h.number, block7d.number, block14d.number, [
-        pair.liquidityToken.address.toLowerCase(),
+        lowerCasedAddress,
       ])
       if (error) return null
-      const formattedPoolData = parsePoolData(data?.now)
-      const formattedPoolData24h = parsePoolData(data?.oneDayAgo)
-      const formattedPoolData48h = parsePoolData(data?.twoDaysAgo)
-      const formattedPoolData7d = parsePoolData(data?.oneWeekAgo)
-      const formattedPoolData14d = parsePoolData(data?.twoWeeksAgo)
-      const current: FormattedPoolFields | undefined = formattedPoolData[pair.liquidityToken.address.toLowerCase()]
-      const oneDay: FormattedPoolFields | undefined = formattedPoolData24h[pair.liquidityToken.address.toLowerCase()]
-      const twoDays: FormattedPoolFields | undefined = formattedPoolData48h[pair.liquidityToken.address.toLowerCase()]
-      const week: FormattedPoolFields | undefined = formattedPoolData7d[pair.liquidityToken.address.toLowerCase()]
-      const twoWeeks: FormattedPoolFields | undefined = formattedPoolData14d[pair.liquidityToken.address.toLowerCase()]
-      const [volumeUSD] = getChangeForPeriod(current?.volumeUSD, oneDay?.volumeUSD, twoDays?.volumeUSD)
-      const [volumeUSDWeek] = getChangeForPeriod(current?.volumeUSD, week?.volumeUSD, twoWeeks?.volumeUSD)
-      const liquidityUSD = current ? current.reserveUSD : 0
+      const current = parseFloat(data?.now[0]?.volumeUSD)
+      const currentReserveUSD = parseFloat(data?.now[0]?.reserveUSD)
+      const oneDay = parseFloat(data?.oneDayAgo[0]?.volumeUSD)
+      const twoDays = parseFloat(data?.twoDaysAgo[0]?.volumeUSD)
+      const week = parseFloat(data?.oneWeekAgo[0]?.volumeUSD)
+      const twoWeeks = parseFloat(data?.twoWeeksAgo[0]?.volumeUSD)
+      const [volumeUSD] = getChangeForPeriod(current, oneDay, twoDays)
+      const [volumeUSDWeek] = getChangeForPeriod(current, week, twoWeeks)
+      const liquidityUSD = currentReserveUSD || 0
       const { lpApr7d } = getLpFeesAndApr(volumeUSD, volumeUSDWeek, liquidityUSD)
       return lpApr7d ? { lpApr7d } : null
     },

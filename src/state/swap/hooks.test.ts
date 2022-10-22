@@ -28,7 +28,7 @@ describe('hooks', () => {
       })
     })
 
-    test('should return BNB BUSD pair by default', () => {
+    test('should return BNB CAKE pair by default', () => {
       expect(queryParametersToSwapState(parse(''))).toEqual({
         [Field.OUTPUT]: { currencyId: DEFAULT_OUTPUT_CURRENCY },
         [Field.INPUT]: { currencyId: 'BNB' },
@@ -41,7 +41,7 @@ describe('hooks', () => {
     })
 
     test('does not duplicate BNB for invalid output token', () => {
-      expect(queryParametersToSwapState(parse('outputCurrency=invalid'))).toEqual({
+      expect(queryParametersToSwapState(parse('outputCurrency=invalid'), 'BNB')).toEqual({
         [Field.INPUT]: { currencyId: '' },
         [Field.OUTPUT]: { currencyId: 'BNB' },
         typedValue: '',
@@ -53,7 +53,7 @@ describe('hooks', () => {
     })
 
     test('output BNB only', () => {
-      expect(queryParametersToSwapState(parse('outputCurrency=bnb&exactAmount=20.5'))).toEqual({
+      expect(queryParametersToSwapState(parse('outputCurrency=bnb&exactAmount=20.5'), 'BNB')).toEqual({
         [Field.OUTPUT]: { currencyId: 'BNB' },
         [Field.INPUT]: { currencyId: '' },
         typedValue: '20.5',
@@ -65,7 +65,7 @@ describe('hooks', () => {
     })
 
     test('invalid recipient', () => {
-      expect(queryParametersToSwapState(parse('outputCurrency=BNB&exactAmount=20.5&recipient=abc'))).toEqual({
+      expect(queryParametersToSwapState(parse('outputCurrency=BNB&exactAmount=20.5&recipient=abc'), 'BNB')).toEqual({
         [Field.OUTPUT]: { currencyId: 'BNB' },
         [Field.INPUT]: { currencyId: '' },
         typedValue: '20.5',
@@ -80,6 +80,7 @@ describe('hooks', () => {
       expect(
         queryParametersToSwapState(
           parse('outputCurrency=BNB&exactAmount=20.5&recipient=0x0fF2D1eFd7A57B7562b2bf27F3f37899dB27F4a5'),
+          'BNB',
         ),
       ).toEqual({
         [Field.OUTPUT]: { currencyId: 'BNB' },
@@ -98,7 +99,9 @@ describe('hooks', () => {
 var mockUseActiveWeb3React: jest.Mock
 
 jest.mock('../../hooks/useActiveWeb3React', () => {
-  mockUseActiveWeb3React = jest.fn().mockReturnValue({})
+  mockUseActiveWeb3React = jest.fn().mockReturnValue({
+    chainId: 56,
+  })
   return {
     __esModule: true,
     default: mockUseActiveWeb3React,
@@ -107,9 +110,9 @@ jest.mock('../../hooks/useActiveWeb3React', () => {
 
 var mockUseWeb3React: jest.Mock
 
-jest.mock('@web3-react/core', () => {
+jest.mock('@pancakeswap/wagmi', () => {
   mockUseWeb3React = jest.fn().mockReturnValue({})
-  const original = jest.requireActual('@web3-react/core') // Step 2.
+  const original = jest.requireActual('@pancakeswap/wagmi') // Step 2.
   return {
     ...original,
     useWeb3React: mockUseWeb3React,
