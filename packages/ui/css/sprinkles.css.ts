@@ -1,31 +1,26 @@
 import { createSprinkles, defineProperties } from '@vanilla-extract/sprinkles'
-import { calc } from '@vanilla-extract/css-utils'
 
 import { Breakpoint, breakpointNames, breakpoints } from './breakpoints'
 import { vars } from './vars.css'
 
-// Ensure reset has lowest specificity
-/* DO NOT MOVE THIS LINE */
-import './reset.css'
-/* DO NOT MOVE THIS LINE */
-
 const flexAlignment = ['flex-start', 'center', 'start', 'flex-end', 'stretch'] as const
 
 const negativeSpace = {
-  '-1px': `${calc(vars.space['1px']).negate()}`,
-  '-1': `${calc(vars.space['1']).negate()}`,
-  '-2': `${calc(vars.space['2']).negate()}`,
-  '-3': `${calc(vars.space['3']).negate()}`,
-  '-4': `${calc(vars.space['4']).negate()}`,
-  '-5': `${calc(vars.space['5']).negate()}`,
-  '-6': `${calc(vars.space['6']).negate()}`,
-  '-7': `${calc(vars.space['7']).negate()}`,
+  // '-1px': `${calc(vars.space['1px']).negate()}`,
+  // '-1': `${calc(vars.space['1']).negate()}`,
+  // '-2': `${calc(vars.space['2']).negate()}`,
+  // '-3': `${calc(vars.space['3']).negate()}`,
+  // '-4': `${calc(vars.space['4']).negate()}`,
+  // '-5': `${calc(vars.space['5']).negate()}`,
+  // '-6': `${calc(vars.space['6']).negate()}`,
+  // '-7': `${calc(vars.space['7']).negate()}`,
 }
 
 const extendedSpace = {
   '100%': '100%',
-  full: '100%',
   auto: 'auto',
+  'fit-content': 'fit-content',
+  '420px': '420px',
   screenSm: breakpoints.sm,
   screenMd: breakpoints.md,
   screenLg: breakpoints.lg,
@@ -33,6 +28,7 @@ const extendedSpace = {
 } as const
 
 const margin = { ...vars.space, auto: 'auto' }
+const extendedHeight = { '100vh': '100vh' }
 
 const responsiveProperties = defineProperties({
   conditions: {
@@ -46,34 +42,35 @@ const responsiveProperties = defineProperties({
   defaultCondition: 'xs',
   responsiveArray: ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'],
   properties: {
-    display: ['block', 'flex', 'grid', 'inline', 'inline-flex', 'inline-block', 'none', 'contents'],
+    display: ['block', 'flex', 'grid', 'inline', 'inline-flex', 'inline-block', 'none'],
     flexDirection: ['column', 'row', 'column-reverse'],
     alignItems: ['center', 'end', 'baseLine', 'inherit', ...flexAlignment],
+    alignSelf: flexAlignment,
     flexWrap: ['wrap', 'nowrap'],
+    flexGrow: [1],
     overflow: ['auto', 'hidden', 'scroll', 'unset'],
     overflowY: ['auto', 'hidden', 'scroll'],
     overflowX: ['auto', 'hidden', 'scroll'],
     position: ['absolute', 'fixed', 'relative', 'sticky'],
     textAlign: ['center', 'left', 'right'],
     justifyContent: [...flexAlignment, 'space-around', 'space-between'],
-    justifyItems: [...flexAlignment],
+    justifyItems: [...flexAlignment, 'space-around', 'space-between'],
     justifySelf: [...flexAlignment],
-    inset: { ...vars.space, ...negativeSpace },
-    height: { ...vars.space, ...extendedSpace },
-    left: { ...vars.space, ...negativeSpace },
+    inset: { '0px': '0px' },
+    height: { ...vars.space, ...extendedSpace, ...extendedHeight },
     marginBottom: { ...margin, ...negativeSpace },
     marginLeft: { ...margin, ...negativeSpace },
     marginRight: { ...margin, ...negativeSpace },
     marginTop: { ...margin, ...negativeSpace },
     margin: { ...margin, ...negativeSpace },
-    padding: { ...margin, ...negativeSpace },
+    padding: { ...vars.space, ...negativeSpace },
     maxHeight: vars.space,
     maxWidth: {
       ...vars.space,
       ...extendedSpace,
       none: 'none',
     },
-    minHeight: vars.space,
+    minHeight: { ...vars.space, ...extendedSpace, ...extendedHeight },
     minWidth: vars.space,
     paddingBottom: vars.space,
     paddingLeft: vars.space,
@@ -83,20 +80,20 @@ const responsiveProperties = defineProperties({
       ...vars.fontSizes,
       inherit: 'inherit',
     },
-    right: { ...vars.space, ...negativeSpace },
-    top: { ...vars.space, ...negativeSpace },
     flex: {
       1: '1 1 0%',
       auto: '1 1 auto',
       initial: '0 1 auto',
       none: 'none',
     },
+    boxShadow: vars.shadows,
     width: {
       ...vars.space,
       ...extendedSpace,
     },
     zIndex: {
       '0': 0,
+      '1': 1,
       ribbon: 9,
       dropdown: 10,
       '10': 10,
@@ -118,6 +115,39 @@ const responsiveProperties = defineProperties({
     borderBottomRightRadius: vars.radii,
     borderTopRightRadius: vars.radii,
     borderBottomLeftRadius: vars.radii,
+    gap: {
+      ...vars.space,
+      sm: vars.space['8px'],
+      md: vars.space['12px'],
+      lg: vars.space['24px'],
+    },
+    rowGap: {
+      ...vars.space,
+      sm: vars.space['8px'],
+      md: vars.space['12px'],
+      lg: vars.space['24px'],
+    },
+    columnGap: {
+      ...vars.space,
+      sm: vars.space['8px'],
+      md: vars.space['12px'],
+      lg: vars.space['24px'],
+    },
+    gridAutoRows: ['auto'],
+    opacity: {
+      '0.5': 0.5,
+      '0.6': 0.6,
+    },
+    lineHeight: {
+      '16px': vars.space['16px'],
+    },
+    borderBottomColor: vars.colors,
+    border: {
+      '1': `1px solid ${vars.colors.cardBorder}`,
+    },
+    borderBottom: {
+      '1': `1px solid ${vars.colors.cardBorder}`,
+    },
   },
   shorthands: {
     borderLeftRadius: ['borderBottomLeftRadius', 'borderTopLeftRadius'],
@@ -175,11 +205,6 @@ const interactiveProperties = defineProperties({
     borderColor: vars.colors,
     color: vars.colors,
     outlineColor: vars.colors,
-    opacity: {
-      '0': 0,
-      '0.5': 0.5,
-      '1': 1,
-    },
   },
   shorthands: {
     bgc: ['backgroundColor'],
@@ -192,4 +217,4 @@ export type Sprinkles = Parameters<typeof sprinkles>[0]
 
 export type OptionalResponsiveObject<Value> = Value | Partial<Record<Breakpoint, Value>>
 export type RequiredResponsiveObject<Value> = Partial<Record<Breakpoint, Value>> &
-  Record<typeof breakpointNames[0], Value>
+  Record<(typeof breakpointNames)[0], Value>

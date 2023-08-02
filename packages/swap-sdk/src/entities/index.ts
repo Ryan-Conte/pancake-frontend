@@ -1,10 +1,5 @@
-export * from './token'
+export { ERC20Token, OnRampCurrency } from './token'
 export * from './pair'
 export * from './route'
 export * from './trade'
-export * from './currency'
-
-export * from './fractions'
-export * from './nativeCurrency'
-export * from './baseCurrency'
 export * from './native'

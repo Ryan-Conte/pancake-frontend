@@ -39,11 +39,12 @@ it("renders correctly", () => {
       height: 48px;
       padding: 0 24px;
       background-color: var(--colors-primary);
-      color: var(--colors-white);
+      color: var(--colors-invertedContrast);
     }
 
-    .c0:hover:not(:disabled):not(.pancake-button--disabled):not(.pancake-button--disabled):not(:active) {
-      opacity: 0.65;
+    .c0:focus-visible {
+      outline: none;
+      box-shadow: var(--shadows-focus);
     }
 
     .c0:active:not(:disabled):not(.pancake-button--disabled):not(.pancake-button--disabled) {
@@ -61,6 +62,12 @@ it("renders correctly", () => {
       box-shadow: none;
       color: var(--colors-textDisabled);
       cursor: not-allowed;
+    }
+
+    @media (hover:hover) {
+      .c0:hover:not(:disabled):not(.pancake-button--disabled):not(.pancake-button--disabled):not(:active) {
+        opacity: 0.65;
+      }
     }
 
     <button

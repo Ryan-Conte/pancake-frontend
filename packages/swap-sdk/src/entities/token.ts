@@ -1,41 +1,61 @@
+import { BaseCurrency, Currency, Token } from '@pancakeswap/swap-sdk-core'
+import { Address } from 'viem'
 import invariant from 'tiny-invariant'
 import { validateAndParseAddress } from '../utils'
-import { BaseCurrency } from './baseCurrency'
-import { Currency } from './currency'
 
 export interface SerializedToken {
   chainId: number
-  address: string
+  address: Address
   decimals: number
   symbol: string
   name?: string
   projectLink?: string
 }
 
+// /**
+//  * Represents an ERC20 token with a unique address and some metadata.
+//  */
+export class ERC20Token extends Token {
+  public constructor(
+    chainId: number,
+    address: Address,
+    decimals: number,
+    symbol: string,
+    name?: string,
+    projectLink?: string
+  ) {
+    super(chainId, validateAndParseAddress(address), decimals, symbol, name, projectLink)
+  }
+}
+
 /**
  * Represents an ERC20 token with a unique address and some metadata.
  */
-export class Token extends BaseCurrency {
-  public readonly isNative: false = false
-  public readonly isToken: true = true
+export class OnRampCurrency extends BaseCurrency {
+  public readonly isNative: boolean
+
+  public readonly isToken: boolean
 
   /**
    * The contract address on the chain on which this token lives
    */
-  public readonly address: string
+  public readonly address: `0x${string}`
+
   public readonly projectLink?: string
 
   public constructor(
     chainId: number,
-    address: string,
+    address: `0x${string}`,
     decimals: number,
     symbol: string,
     name?: string,
     projectLink?: string
   ) {
     super(chainId, decimals, symbol, name)
-    this.address = validateAndParseAddress(address)
+    this.address = address
     this.projectLink = projectLink
+    this.isNative = address === '0x' && true
+    this.isToken = address !== '0x' && true
   }
 
   /**
@@ -52,7 +72,8 @@ export class Token extends BaseCurrency {
    * @throws if the tokens have the same address
    * @throws if the tokens are on different chains
    */
-  public sortsBefore(other: Token): boolean {
+  public sortsBefore(other: Currency): boolean {
+    if (!other.isToken) return false
     invariant(this.chainId === other.chainId, 'CHAIN_IDS')
     invariant(this.address !== other.address, 'ADDRESSES')
     return this.address.toLowerCase() < other.address.toLowerCase()
@@ -62,7 +83,7 @@ export class Token extends BaseCurrency {
    * Return this token, which does not need to be wrapped
    */
   public get wrapped(): Token {
-    return this
+    return this as Token
   }
 
   public get serialize(): SerializedToken {

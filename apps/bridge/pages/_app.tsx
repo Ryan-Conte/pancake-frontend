@@ -1,8 +1,9 @@
-import { PancakeTheme, ResetCSS, dark, light, ModalProvider } from '@pancakeswap/uikit'
+import '@pancakeswap/ui/css/reset.css'
+import { PancakeTheme, ResetCSS, dark, light, ModalProvider, UIKitProvider } from '@pancakeswap/uikit'
 import { useEffect, useState } from 'react'
 import { AppProps } from 'next/app'
 import Script from 'next/script'
-import { createGlobalStyle, ThemeProvider } from 'styled-components'
+import { createGlobalStyle } from 'styled-components'
 import { ThemeProvider as NextThemeProvider, useTheme as useNextTheme } from 'next-themes'
 import Head from 'next/head'
 import { Menu } from '../components/Menu'
@@ -15,9 +16,9 @@ declare module 'styled-components' {
 const StyledThemeProvider: React.FC<React.PropsWithChildren> = (props) => {
   const { resolvedTheme } = useNextTheme()
   return (
-    <ThemeProvider theme={resolvedTheme === 'dark' ? dark : light} {...props}>
+    <UIKitProvider theme={resolvedTheme === 'dark' ? dark : light} {...props}>
       {props.children}
-    </ThemeProvider>
+    </UIKitProvider>
   )
 }
 
@@ -73,7 +74,7 @@ function MyApp({ Component, pageProps }: AppProps) {
         />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="🥞 PancakeSwap - A next evolution DeFi exchange on BNB Smart Chain (BSC)" />
-        <title>PancakeSwap Bridge</title>
+        <title>Bridge | PancakeSwap</title>
       </Head>
       <NextThemeProvider>
         <StyledThemeProvider>
@@ -98,7 +99,7 @@ function MyApp({ Component, pageProps }: AppProps) {
             new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
             j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-            })(window,document,'script','dataLayer', '${process.env.NEXT_PUBLIC_GTAG}');
+            })(window,document,'script','dataLayer', '${process.env.NEXT_PUBLIC_NEW_GTAG}');
           `,
         }}
       />

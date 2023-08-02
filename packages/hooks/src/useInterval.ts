@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useLastUpdated } from '@pancakeswap/hooks'
 import isUndefinedOrNull from '@pancakeswap/utils/isUndefinedOrNull'
+import useLastUpdated from './useLastUpdated'
 
 export default function useInterval(
   callback: () => void,
-  delay: undefined | null | number,
+  delay: undefined | number,
   leading = true,
   initiateUpdate = true,
 ) {

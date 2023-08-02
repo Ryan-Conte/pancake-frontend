@@ -1,13 +1,15 @@
 import { AnimatePresence, Variants, LazyMotion, domAnimation } from "framer-motion";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePopper } from "react-popper";
+import { isMobile } from "react-device-detect";
 import { DefaultTheme, ThemeProvider, useTheme } from "styled-components";
+import debounce from "lodash/debounce";
 import { dark, light } from "../../theme";
 import getPortalRoot from "../../util/getPortalRoot";
 import isTouchDevice from "../../util/isTouchDevice";
 import { Arrow, StyledTooltip } from "./StyledTooltip";
-import { TooltipOptions, TooltipRefs } from "./types";
+import { DeviceAction, Devices, TooltipOptions, TooltipRefs } from "./types";
 
 const animationVariants: Variants = {
   initial: { opacity: 0 },
@@ -21,6 +23,17 @@ const animationMap = {
   exit: "exit",
 };
 
+const deviceActions: { [device in Devices]: DeviceAction } = {
+  [Devices.touchDevice]: {
+    start: "touchstart",
+    end: "touchend",
+  },
+  [Devices.nonTouchDevice]: {
+    start: "mouseenter",
+    end: "mouseleave",
+  },
+};
+
 const invertTheme = (currentTheme: DefaultTheme) => {
   if (currentTheme.isDark) {
     return light;
@@ -28,110 +41,105 @@ const invertTheme = (currentTheme: DefaultTheme) => {
   return dark;
 };
 
-const useTooltip = (content: React.ReactNode, options: TooltipOptions): TooltipRefs => {
+const useTooltip = (content: React.ReactNode, options?: TooltipOptions): TooltipRefs => {
   const { isDark } = useTheme();
   const {
     placement = "auto",
-    trigger = "hover",
+    trigger = isMobile ? "click" : "hover",
     arrowPadding = 16,
     tooltipPadding = { left: 16, right: 16 },
     tooltipOffset = [0, 10],
     hideTimeout = 100,
-  } = options;
+    manualVisible = false,
+    avoidToStopPropagation = false,
+    strategy,
+    isInPortal = true,
+  } = options || {};
+
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
   const [tooltipElement, setTooltipElement] = useState<HTMLElement | null>(null);
   const [arrowElement, setArrowElement] = useState<HTMLElement | null>(null);
 
-  const [visible, setVisible] = useState(false);
-  const isHoveringOverTooltip = useRef(false);
-  const hideTimeoutRef = useRef<number>();
+  const [visible, setVisible] = useState(manualVisible);
 
+  useEffect(() => {
+    setVisible(manualVisible);
+  }, [manualVisible]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedHide = useCallback(
+    debounce(() => {
+      setVisible(false);
+    }, hideTimeout),
+    [hideTimeout]
+  );
+  // using lodash debounce we can get rid of hideTimeout cleanups
+  // loadash's debounce handles cleanup it its implementation
   const hideTooltip = useCallback(
     (e: Event) => {
-      const hide = () => {
+      if (manualVisible) return;
+      if (!avoidToStopPropagation) {
         e.stopPropagation();
         e.preventDefault();
-        setVisible(false);
-      };
-
+      }
       if (trigger === "hover") {
-        if (hideTimeoutRef.current) {
-          window.clearTimeout(hideTimeoutRef.current);
-        }
-        if (e.target === tooltipElement) {
-          isHoveringOverTooltip.current = false;
-        }
-        if (!isHoveringOverTooltip.current) {
-          hideTimeoutRef.current = window.setTimeout(() => {
-            if (!isHoveringOverTooltip.current) {
-              hide();
-            }
-          }, hideTimeout);
-        }
+        debouncedHide();
       } else {
-        hide();
+        setVisible(false);
       }
     },
-    [tooltipElement, trigger, hideTimeout]
+    [manualVisible, trigger, debouncedHide, avoidToStopPropagation]
   );
 
   const showTooltip = useCallback(
     (e: Event) => {
-      e.stopPropagation();
-      e.preventDefault();
       setVisible(true);
       if (trigger === "hover") {
-        if (e.target === targetElement) {
-          // If we were about to close the tooltip and got back to it
-          // then prevent closing it.
-          clearTimeout(hideTimeoutRef.current);
-        }
-        if (e.target === tooltipElement) {
-          isHoveringOverTooltip.current = true;
-        }
+        // we dont need to make a inTooltipRef anymore, when we leave
+        // the target, hide tooltip is called for leaving the target, but show tooltip
+        // is called for entering the tooltip. since we enact a delay in hidetooltip,
+        // by the time the dylay is over lodash debounce will be cancelled until we leave the
+        // tooltip calling hidetooltip onece again to close. clever method jackson pointed me
+        // onto. saves a lot of nedless states and refs and listeners
+        debouncedHide.cancel();
+      }
+      if (!avoidToStopPropagation) {
+        e.stopPropagation();
+        e.preventDefault();
       }
     },
-    [tooltipElement, targetElement, trigger]
+    [trigger, avoidToStopPropagation, debouncedHide]
   );
 
   const toggleTooltip = useCallback(
     (e: Event) => {
-      e.stopPropagation();
+      if (!avoidToStopPropagation) e.stopPropagation();
       setVisible(!visible);
     },
-    [visible]
+    [visible, avoidToStopPropagation]
   );
 
   // Trigger = hover
   useEffect(() => {
-    if (targetElement === null || trigger !== "hover") return undefined;
+    if (targetElement === null || trigger !== "hover" || manualVisible) return undefined;
 
-    if (isTouchDevice()) {
-      targetElement.addEventListener("touchstart", showTooltip);
-      targetElement.addEventListener("touchend", hideTooltip);
-    } else {
-      targetElement.addEventListener("mouseenter", showTooltip);
-      targetElement.addEventListener("mouseleave", hideTooltip);
-    }
+    const eventHandlers = isTouchDevice() ? deviceActions.touchDevice : deviceActions.nonTouchDevice;
+
+    [targetElement, tooltipElement].forEach((element) => {
+      element?.addEventListener(eventHandlers.start, showTooltip);
+      element?.addEventListener(eventHandlers.end, hideTooltip);
+    });
+
     return () => {
-      targetElement.removeEventListener("touchstart", showTooltip);
-      targetElement.removeEventListener("touchend", hideTooltip);
-      targetElement.removeEventListener("mouseenter", showTooltip);
-      targetElement.removeEventListener("mouseleave", showTooltip);
+      [targetElement, tooltipElement].forEach((element) => {
+        element?.removeEventListener(eventHandlers.start, showTooltip);
+        element?.removeEventListener(eventHandlers.end, hideTooltip);
+        debouncedHide.cancel();
+      });
     };
-  }, [trigger, targetElement, hideTooltip, showTooltip]);
+  }, [trigger, targetElement, hideTooltip, showTooltip, manualVisible, tooltipElement, debouncedHide]);
 
-  // Keep tooltip open when cursor moves from the targetElement to the tooltip
-  useEffect(() => {
-    if (tooltipElement === null || trigger !== "hover") return undefined;
-
-    tooltipElement.addEventListener("mouseenter", showTooltip);
-    tooltipElement.addEventListener("mouseleave", hideTooltip);
-    return () => {
-      tooltipElement.removeEventListener("mouseenter", showTooltip);
-      tooltipElement.removeEventListener("mouseleave", hideTooltip);
-    };
-  }, [trigger, tooltipElement, hideTooltip, showTooltip]);
+  // no longer need the extra useeffect
 
   // Trigger = click
   useEffect(() => {
@@ -185,7 +193,8 @@ const useTooltip = (content: React.ReactNode, options: TooltipOptions): TooltipR
   // even on the iPhone 5 screen (320px wide), BUT in the storybook with the contrived example ScreenEdges example
   // iPhone 5 behaves differently overflowing beyond the edge. All paddings are identical so I have no idea why it is,
   // and fixing that seems like a very bad use of time.
-  const { styles, attributes } = usePopper(targetElement, tooltipElement, {
+  const { styles, attributes, forceUpdate } = usePopper(targetElement, tooltipElement, {
+    strategy,
     placement,
     modifiers: [
       {
@@ -219,12 +228,13 @@ const useTooltip = (content: React.ReactNode, options: TooltipOptions): TooltipR
   );
 
   const portal = getPortalRoot();
-  const tooltipInPortal = portal ? createPortal(AnimatedTooltip, portal) : null;
+  const tooltipInPortal = portal && isInPortal ? createPortal(AnimatedTooltip, portal) : null;
 
   return {
     targetRef: setTargetElement,
     tooltip: tooltipInPortal ?? AnimatedTooltip,
     tooltipVisible: visible,
+    forceUpdate,
   };
 };
 

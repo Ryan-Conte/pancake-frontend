@@ -1,9 +1,9 @@
-import React from "react";
+import { vi } from "vitest";
 import { renderWithProvider } from "../../testHelpers";
 import ButtonMenu from "../../components/ButtonMenu/ButtonMenu";
 import ButtonMenuItem from "../../components/ButtonMenu/ButtonMenuItem";
 
-const handleClick = jest.fn();
+const handleClick = vi.fn();
 
 it("renders correctly", () => {
   const { asFragment } = renderWithProvider(
@@ -47,11 +47,12 @@ it("renders correctly", () => {
       height: 48px;
       padding: 0 24px;
       background-color: var(--colors-primary);
-      color: var(--colors-white);
+      color: var(--colors-invertedContrast);
     }
 
-    .c1:hover:not(:disabled):not(.pancake-button--disabled):not(.pancake-button--disabled):not(:active) {
-      opacity: 0.65;
+    .c1:focus-visible {
+      outline: none;
+      box-shadow: var(--shadows-focus);
     }
 
     .c1:active:not(:disabled):not(.pancake-button--disabled):not(.pancake-button--disabled) {
@@ -106,6 +107,12 @@ it("renders correctly", () => {
 
     .c2:hover:not(:disabled):not(:active) {
       background-color: transparent;
+    }
+
+    @media (hover:hover) {
+      .c1:hover:not(:disabled):not(.pancake-button--disabled):not(.pancake-button--disabled):not(:active) {
+        opacity: 0.65;
+      }
     }
 
     <div

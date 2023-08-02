@@ -1,16 +1,18 @@
 /* eslint-disable prefer-destructuring */
 /* eslint-disable consistent-return */
 /* eslint-disable class-methods-use-this */
-import {
-  Chain,
-  ConnectorNotFoundError,
-  ResourceUnavailableError,
-  RpcError,
-  UserRejectedRequestError,
-  SwitchChainNotSupportedError,
-} from 'wagmi'
+import { Chain, ConnectorNotFoundError, SwitchChainNotSupportedError, WindowProvider } from 'wagmi'
+import { UserRejectedRequestError, ResourceUnavailableRpcError, ProviderRpcError, toHex } from 'viem'
 import { InjectedConnector } from 'wagmi/connectors/injected'
-import { hexValue } from '@ethersproject/bytes'
+
+declare global {
+  interface Window {
+    BinanceChain?: {
+      bnbSign?: (address: string, message: string) => Promise<{ publicKey: string; signature: string }>
+      switchNetwork?: (networkId: string) => Promise<string>
+    } & WindowProvider
+  }
+}
 
 const mappingNetwork: Record<number, string> = {
   1: 'eth-mainnet',
@@ -81,8 +83,8 @@ export class BinanceWalletConnector extends InjectedConnector {
 
       return { account, chain: { id, unsupported }, provider }
     } catch (error) {
-      if (this.isUserRejectedRequestError(error)) throw new UserRejectedRequestError(error)
-      if ((<RpcError>error).code === -32002) throw new ResourceUnavailableError(error)
+      if (this.isUserRejectedRequestError(error)) throw new UserRejectedRequestError(error as Error)
+      if ((<ProviderRpcError>error).code === -32002) throw new ResourceUnavailableRpcError(error as ProviderRpcError)
       throw error
     }
   }
@@ -105,23 +107,24 @@ export class BinanceWalletConnector extends InjectedConnector {
     const provider = await this.getProvider()
     if (!provider) throw new ConnectorNotFoundError()
 
-    const id = hexValue(chainId)
+    const id = toHex(chainId)
 
     if (mappingNetwork[chainId]) {
       try {
         await provider.switchNetwork?.(mappingNetwork[chainId])
 
         return (
-          this.chains.find((x) => x.id === chainId) ?? {
+          this.chains.find((x) => x.id === chainId) || {
             id: chainId,
             name: `Chain ${id}`,
             network: `${id}`,
-            rpcUrls: { default: '' },
+            nativeCurrency: { decimals: 18, name: 'BNB', symbol: 'BNB' },
+            rpcUrls: { default: { http: [''] }, public: { http: [''] } },
           }
         )
       } catch (error) {
         if ((error as any).error === 'user rejected') {
-          throw new UserRejectedRequestError(error)
+          throw new UserRejectedRequestError(error as Error)
         }
       }
     }

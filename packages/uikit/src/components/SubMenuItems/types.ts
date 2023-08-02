@@ -11,10 +11,12 @@ export type SubMenuItemsType = {
   disabled?: boolean;
   isMobileOnly?: boolean;
   type?: DropdownMenuItemType;
+  onClick?: React.MouseEvent<HTMLElement>;
+  LabelIcon?: ElementType<any>;
 };
 
 export interface SubMenuItemsProps extends FlexProps {
-  items: SubMenuItemsType[];
+  items?: SubMenuItemsType[];
   activeItem?: string;
   isMobileOnly?: boolean;
 }

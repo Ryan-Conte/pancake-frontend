@@ -1,48 +1,85 @@
-import { getCreate2Address } from '@ethersproject/address'
-import { keccak256, pack } from '@ethersproject/solidity'
-import JSBI from 'jsbi'
-import invariant from 'tiny-invariant'
-import { Price } from './fractions/price'
-
 import {
-  BigintIsh,
-  FACTORY_ADDRESS_MAP,
+  InsufficientInputAmountError,
+  InsufficientReservesError,
+  sqrt,
+  CurrencyAmount,
+  Price,
   FIVE,
-  INIT_CODE_HASH_MAP,
-  MINIMUM_LIQUIDITY,
   ONE,
   ZERO,
   _10000,
   _9975,
-} from '../constants'
-import { InsufficientInputAmountError, InsufficientReservesError } from '../errors'
-import { sqrt } from '../utils'
-import { CurrencyAmount } from './fractions'
-import { Token } from './token'
+  BigintIsh,
+  MINIMUM_LIQUIDITY,
+} from '@pancakeswap/swap-sdk-core'
+import {
+  Address,
+  encodePacked,
+  keccak256,
+  GetCreate2AddressOptions,
+  toBytes,
+  Hex,
+  pad,
+  isBytes,
+  ByteArray,
+  getAddress,
+  slice,
+  concat,
+} from 'viem'
+import invariant from 'tiny-invariant'
 
-let PAIR_ADDRESS_CACHE: { [key: string]: string } = {}
+import { ChainId, FACTORY_ADDRESS_MAP, INIT_CODE_HASH_MAP } from '../constants'
+import { ERC20Token } from './token'
 
-const composeKey = (token0: Token, token1: Token) => `${token0.chainId}-${token0.address}-${token1.address}`
+let PAIR_ADDRESS_CACHE: { [key: string]: Address } = {}
+
+const composeKey = (token0: ERC20Token, token1: ERC20Token) => `${token0.chainId}-${token0.address}-${token1.address}`
+
+function getCreate2Address(
+  from_: GetCreate2AddressOptions['from'],
+  salt_: GetCreate2AddressOptions['salt'],
+  initCodeHash: Hex
+) {
+  const from = toBytes(getAddress(from_))
+  const salt = pad(isBytes(salt_) ? salt_ : toBytes(salt_ as Hex), {
+    size: 32,
+  }) as ByteArray
+
+  return getAddress(slice(keccak256(concat([toBytes('0xff'), from, salt, toBytes(initCodeHash)])), 12))
+}
+
+const EMPTY_INPU_HASH = '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
+const ZKSYNC_PREFIX = '0x2020dba91b30cc0006188af794c2fb30dd8520db7e2c088b7fc7c103c00ca494' // keccak256('zksyncCreate2')
+
+function getCreate2AddressZkSync(from: Address, salt: `0x${string}`, initCodeHash: `0x${string}`): `0x${string}` {
+  return getAddress(
+    `0x${keccak256(concat([ZKSYNC_PREFIX, pad(from, { size: 32 }), salt, initCodeHash, EMPTY_INPU_HASH])).slice(26)}`
+  )
+}
 
 export const computePairAddress = ({
   factoryAddress,
   tokenA,
   tokenB,
 }: {
-  factoryAddress: string
-  tokenA: Token
-  tokenB: Token
-}): string => {
+  factoryAddress: Address
+  tokenA: ERC20Token
+  tokenB: ERC20Token
+}): Address => {
   const [token0, token1] = tokenA.sortsBefore(tokenB) ? [tokenA, tokenB] : [tokenB, tokenA] // does safety checks
   const key = composeKey(token0, token1)
 
   if (PAIR_ADDRESS_CACHE?.[key] === undefined) {
+    const getCreate2Address_ =
+      token0.chainId === ChainId.ZKSYNC_TESTNET || token1.chainId === ChainId.ZKSYNC
+        ? getCreate2AddressZkSync
+        : getCreate2Address
     PAIR_ADDRESS_CACHE = {
       ...PAIR_ADDRESS_CACHE,
-      [key]: getCreate2Address(
+      [key]: getCreate2Address_(
         factoryAddress,
-        keccak256(['bytes'], [pack(['address', 'address'], [token0.address, token1.address])]),
-        INIT_CODE_HASH_MAP[token0.chainId]
+        keccak256(encodePacked(['address', 'address'], [token0.address, token1.address])),
+        INIT_CODE_HASH_MAP[token0.chainId as keyof typeof INIT_CODE_HASH_MAP]
       ),
     }
   }
@@ -51,39 +88,44 @@ export const computePairAddress = ({
 }
 
 export class Pair {
-  public readonly liquidityToken: Token
-  private readonly tokenAmounts: [CurrencyAmount<Token>, CurrencyAmount<Token>]
+  public readonly liquidityToken: ERC20Token
 
-  public static getAddress(tokenA: Token, tokenB: Token): string {
-    return computePairAddress({ factoryAddress: FACTORY_ADDRESS_MAP[tokenA.chainId], tokenA, tokenB })
+  private readonly tokenAmounts: [CurrencyAmount<ERC20Token>, CurrencyAmount<ERC20Token>]
+
+  public static getAddress(tokenA: ERC20Token, tokenB: ERC20Token): Address {
+    return computePairAddress({
+      factoryAddress: FACTORY_ADDRESS_MAP[tokenA.chainId as keyof typeof FACTORY_ADDRESS_MAP],
+      tokenA,
+      tokenB,
+    })
   }
 
-  public constructor(currencyAmountA: CurrencyAmount<Token>, tokenAmountB: CurrencyAmount<Token>) {
+  public constructor(currencyAmountA: CurrencyAmount<ERC20Token>, tokenAmountB: CurrencyAmount<ERC20Token>) {
     const tokenAmounts = currencyAmountA.currency.sortsBefore(tokenAmountB.currency) // does safety checks
       ? [currencyAmountA, tokenAmountB]
       : [tokenAmountB, currencyAmountA]
-    this.liquidityToken = new Token(
+    this.liquidityToken = new ERC20Token(
       tokenAmounts[0].currency.chainId,
       Pair.getAddress(tokenAmounts[0].currency, tokenAmounts[1].currency),
       18,
       'Cake-LP',
       'Pancake LPs'
     )
-    this.tokenAmounts = tokenAmounts as [CurrencyAmount<Token>, CurrencyAmount<Token>]
+    this.tokenAmounts = tokenAmounts as [CurrencyAmount<ERC20Token>, CurrencyAmount<ERC20Token>]
   }
 
   /**
    * Returns true if the token is either token0 or token1
    * @param token to check
    */
-  public involvesToken(token: Token): boolean {
+  public involvesToken(token: ERC20Token): boolean {
     return token.equals(this.token0) || token.equals(this.token1)
   }
 
   /**
    * Returns the current mid price of the pair in terms of token0, i.e. the ratio of reserve1 to reserve0
    */
-  public get token0Price(): Price<Token, Token> {
+  public get token0Price(): Price<ERC20Token, ERC20Token> {
     const result = this.tokenAmounts[1].divide(this.tokenAmounts[0])
     return new Price(this.token0, this.token1, result.denominator, result.numerator)
   }
@@ -91,7 +133,7 @@ export class Pair {
   /**
    * Returns the current mid price of the pair in terms of token1, i.e. the ratio of reserve0 to reserve1
    */
-  public get token1Price(): Price<Token, Token> {
+  public get token1Price(): Price<ERC20Token, ERC20Token> {
     const result = this.tokenAmounts[0].divide(this.tokenAmounts[1])
     return new Price(this.token1, this.token0, result.denominator, result.numerator)
   }
@@ -100,7 +142,7 @@ export class Pair {
    * Return the price of the given token in terms of the other token in the pair.
    * @param token token to return price of
    */
-  public priceOf(token: Token): Price<Token, Token> {
+  public priceOf(token: ERC20Token): Price<ERC20Token, ERC20Token> {
     invariant(this.involvesToken(token), 'TOKEN')
     return token.equals(this.token0) ? this.token0Price : this.token1Price
   }
@@ -112,121 +154,118 @@ export class Pair {
     return this.token0.chainId
   }
 
-  public get token0(): Token {
+  public get token0(): ERC20Token {
     return this.tokenAmounts[0].currency
   }
 
-  public get token1(): Token {
+  public get token1(): ERC20Token {
     return this.tokenAmounts[1].currency
   }
 
-  public get reserve0(): CurrencyAmount<Token> {
+  public get reserve0(): CurrencyAmount<ERC20Token> {
     return this.tokenAmounts[0]
   }
 
-  public get reserve1(): CurrencyAmount<Token> {
+  public get reserve1(): CurrencyAmount<ERC20Token> {
     return this.tokenAmounts[1]
   }
 
-  public reserveOf(token: Token): CurrencyAmount<Token> {
+  public reserveOf(token: ERC20Token): CurrencyAmount<ERC20Token> {
     invariant(this.involvesToken(token), 'TOKEN')
     return token.equals(this.token0) ? this.reserve0 : this.reserve1
   }
 
-  public getOutputAmount(inputAmount: CurrencyAmount<Token>): [CurrencyAmount<Token>, Pair] {
+  public getOutputAmount(inputAmount: CurrencyAmount<ERC20Token>): [CurrencyAmount<ERC20Token>, Pair] {
     invariant(this.involvesToken(inputAmount.currency), 'TOKEN')
-    if (JSBI.equal(this.reserve0.quotient, ZERO) || JSBI.equal(this.reserve1.quotient, ZERO)) {
+    if (this.reserve0.quotient === ZERO || this.reserve1.quotient === ZERO) {
       throw new InsufficientReservesError()
     }
     const inputReserve = this.reserveOf(inputAmount.currency)
     const outputReserve = this.reserveOf(inputAmount.currency.equals(this.token0) ? this.token1 : this.token0)
-    const inputAmountWithFee = JSBI.multiply(inputAmount.quotient, _9975)
-    const numerator = JSBI.multiply(inputAmountWithFee, outputReserve.quotient)
-    const denominator = JSBI.add(JSBI.multiply(inputReserve.quotient, _10000), inputAmountWithFee)
+    const inputAmountWithFee = inputAmount.quotient * _9975
+    const numerator = inputAmountWithFee * outputReserve.quotient
+    const denominator = inputReserve.quotient * _10000 + inputAmountWithFee
     const outputAmount = CurrencyAmount.fromRawAmount(
       inputAmount.currency.equals(this.token0) ? this.token1 : this.token0,
-      JSBI.divide(numerator, denominator)
+      numerator / denominator
     )
-    if (JSBI.equal(outputAmount.quotient, ZERO)) {
+    if (outputAmount.quotient === ZERO) {
       throw new InsufficientInputAmountError()
     }
     return [outputAmount, new Pair(inputReserve.add(inputAmount), outputReserve.subtract(outputAmount))]
   }
 
-  public getInputAmount(outputAmount: CurrencyAmount<Token>): [CurrencyAmount<Token>, Pair] {
+  public getInputAmount(outputAmount: CurrencyAmount<ERC20Token>): [CurrencyAmount<ERC20Token>, Pair] {
     invariant(this.involvesToken(outputAmount.currency), 'TOKEN')
     if (
-      JSBI.equal(this.reserve0.quotient, ZERO) ||
-      JSBI.equal(this.reserve1.quotient, ZERO) ||
-      JSBI.greaterThanOrEqual(outputAmount.quotient, this.reserveOf(outputAmount.currency).quotient)
+      this.reserve0.quotient === ZERO ||
+      this.reserve1.quotient === ZERO ||
+      outputAmount.quotient >= this.reserveOf(outputAmount.currency).quotient
     ) {
       throw new InsufficientReservesError()
     }
 
     const outputReserve = this.reserveOf(outputAmount.currency)
     const inputReserve = this.reserveOf(outputAmount.currency.equals(this.token0) ? this.token1 : this.token0)
-    const numerator = JSBI.multiply(JSBI.multiply(inputReserve.quotient, outputAmount.quotient), _10000)
-    const denominator = JSBI.multiply(JSBI.subtract(outputReserve.quotient, outputAmount.quotient), _9975)
+    const numerator = inputReserve.quotient * outputAmount.quotient * _10000
+    const denominator = (outputReserve.quotient - outputAmount.quotient) * _9975
     const inputAmount = CurrencyAmount.fromRawAmount(
       outputAmount.currency.equals(this.token0) ? this.token1 : this.token0,
-      JSBI.add(JSBI.divide(numerator, denominator), ONE)
+      numerator / denominator + ONE
     )
     return [inputAmount, new Pair(inputReserve.add(inputAmount), outputReserve.subtract(outputAmount))]
   }
 
   public getLiquidityMinted(
-    totalSupply: CurrencyAmount<Token>,
-    tokenAmountA: CurrencyAmount<Token>,
-    tokenAmountB: CurrencyAmount<Token>
-  ): CurrencyAmount<Token> {
+    totalSupply: CurrencyAmount<ERC20Token>,
+    tokenAmountA: CurrencyAmount<ERC20Token>,
+    tokenAmountB: CurrencyAmount<ERC20Token>
+  ): CurrencyAmount<ERC20Token> {
     invariant(totalSupply.currency.equals(this.liquidityToken), 'LIQUIDITY')
     const tokenAmounts = tokenAmountA.currency.sortsBefore(tokenAmountB.currency) // does safety checks
       ? [tokenAmountA, tokenAmountB]
       : [tokenAmountB, tokenAmountA]
     invariant(tokenAmounts[0].currency.equals(this.token0) && tokenAmounts[1].currency.equals(this.token1), 'TOKEN')
 
-    let liquidity: JSBI
-    if (JSBI.equal(totalSupply.quotient, ZERO)) {
-      liquidity = JSBI.subtract(
-        sqrt(JSBI.multiply(tokenAmounts[0].quotient, tokenAmounts[1].quotient)),
-        MINIMUM_LIQUIDITY
-      )
+    let liquidity: bigint
+    if (totalSupply.quotient === ZERO) {
+      liquidity = sqrt(tokenAmounts[0].quotient * tokenAmounts[1].quotient) - MINIMUM_LIQUIDITY
     } else {
-      const amount0 = JSBI.divide(JSBI.multiply(tokenAmounts[0].quotient, totalSupply.quotient), this.reserve0.quotient)
-      const amount1 = JSBI.divide(JSBI.multiply(tokenAmounts[1].quotient, totalSupply.quotient), this.reserve1.quotient)
-      liquidity = JSBI.lessThanOrEqual(amount0, amount1) ? amount0 : amount1
+      const amount0 = (tokenAmounts[0].quotient * totalSupply.quotient) / this.reserve0.quotient
+      const amount1 = (tokenAmounts[1].quotient * totalSupply.quotient) / this.reserve1.quotient
+      liquidity = amount0 <= amount1 ? amount0 : amount1
     }
-    if (!JSBI.greaterThan(liquidity, ZERO)) {
+    if (!(liquidity > ZERO)) {
       throw new InsufficientInputAmountError()
     }
     return CurrencyAmount.fromRawAmount(this.liquidityToken, liquidity)
   }
 
   public getLiquidityValue(
-    token: Token,
-    totalSupply: CurrencyAmount<Token>,
-    liquidity: CurrencyAmount<Token>,
-    feeOn: boolean = false,
+    token: ERC20Token,
+    totalSupply: CurrencyAmount<ERC20Token>,
+    liquidity: CurrencyAmount<ERC20Token>,
+    feeOn = false,
     kLast?: BigintIsh
-  ): CurrencyAmount<Token> {
+  ): CurrencyAmount<ERC20Token> {
     invariant(this.involvesToken(token), 'TOKEN')
     invariant(totalSupply.currency.equals(this.liquidityToken), 'TOTAL_SUPPLY')
     invariant(liquidity.currency.equals(this.liquidityToken), 'LIQUIDITY')
-    invariant(JSBI.lessThanOrEqual(liquidity.quotient, totalSupply.quotient), 'LIQUIDITY')
+    invariant(liquidity.quotient <= totalSupply.quotient, 'LIQUIDITY')
 
-    let totalSupplyAdjusted: CurrencyAmount<Token>
+    let totalSupplyAdjusted: CurrencyAmount<ERC20Token>
     if (!feeOn) {
       totalSupplyAdjusted = totalSupply
     } else {
       invariant(!!kLast, 'K_LAST')
-      const kLastParsed = JSBI.BigInt(kLast)
-      if (!JSBI.equal(kLastParsed, ZERO)) {
-        const rootK = sqrt(JSBI.multiply(this.reserve0.quotient, this.reserve1.quotient))
+      const kLastParsed = BigInt(kLast)
+      if (!(kLastParsed === ZERO)) {
+        const rootK = sqrt(this.reserve0.quotient * this.reserve1.quotient)
         const rootKLast = sqrt(kLastParsed)
-        if (JSBI.greaterThan(rootK, rootKLast)) {
-          const numerator = JSBI.multiply(totalSupply.quotient, JSBI.subtract(rootK, rootKLast))
-          const denominator = JSBI.add(JSBI.multiply(rootK, FIVE), rootKLast)
-          const feeLiquidity = JSBI.divide(numerator, denominator)
+        if (rootK > rootKLast) {
+          const numerator = totalSupply.quotient * (rootK - rootKLast)
+          const denominator = rootK * FIVE + rootKLast
+          const feeLiquidity = numerator / denominator
           totalSupplyAdjusted = totalSupply.add(CurrencyAmount.fromRawAmount(this.liquidityToken, feeLiquidity))
         } else {
           totalSupplyAdjusted = totalSupply
@@ -238,7 +277,7 @@ export class Pair {
 
     return CurrencyAmount.fromRawAmount(
       token,
-      JSBI.divide(JSBI.multiply(liquidity.quotient, this.reserveOf(token).quotient), totalSupplyAdjusted.quotient)
+      (liquidity.quotient * this.reserveOf(token).quotient) / totalSupplyAdjusted.quotient
     )
   }
 }

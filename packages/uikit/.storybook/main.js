@@ -1,6 +1,10 @@
-const { vanillaExtractPlugin } = require("@vanilla-extract/vite-plugin");
+import { mergeConfig } from "vite";
 
 module.exports = {
+  framework: {
+    name: "@storybook/react-vite",
+    options: {},
+  },
   stories: ["../src/**/*.stories.mdx", "../src/**/*.stories.@(js|jsx|ts|tsx)"],
   addons: [
     {
@@ -13,9 +17,17 @@ module.exports = {
     "@storybook/addon-a11y",
     "themeprovider-storybook/register",
   ],
-  core: { builder: "@storybook/builder-vite" },
   async viteFinal(config) {
-    config.plugins.push(vanillaExtractPlugin());
-    return config;
+    const finalConfig = mergeConfig(config, {
+      resolve: {
+        alias: {
+          // @see https://github.com/nuxt/vite/issues/160#issuecomment-983080874
+          crypto: require.resolve("rollup-plugin-node-builtins"),
+        },
+      },
+      plugins: [require("@vanilla-extract/vite-plugin").vanillaExtractPlugin()],
+    });
+
+    return finalConfig;
   },
 };
